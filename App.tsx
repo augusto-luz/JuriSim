@@ -8,7 +8,7 @@ import { initializeGemini } from './services/geminiService';
 import { persistenceService } from './services/persistence';
 import { SCENARIOS, MOCK_USER } from './constants';
 import { CourtRole, User as UserType } from './types';
-import { Gavel, Users, User, ArrowLeft, ArrowRight, Shield, Scale, ScrollText, Video, Keyboard, Plus, Copy, Check } from 'lucide-react';
+import { Gavel, Users, User, ArrowRight, Shield, Scale, ScrollText, Video, Keyboard, Plus, AlertCircle } from 'lucide-react';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -30,19 +30,19 @@ const App: React.FC = () => {
     if (session) {
       setApiKey(session.apiKey);
       setUser(session.user);
-      initializeGemini(session.apiKey);
+      if (session.apiKey) initializeGemini(session.apiKey);
       setIsAuthenticated(true);
     }
     setIsLoadingSession(false);
   }, []);
 
-  const handleLogin = (key: string, loggedUser: UserType) => {
+  const handleLogin = (key: string, loggedUser: UserType, rememberMe: boolean) => {
     setApiKey(key);
     setUser(loggedUser);
-    initializeGemini(key);
+    if (key) initializeGemini(key);
     setIsAuthenticated(true);
-    // Persist session
-    persistenceService.saveSession(key, loggedUser);
+    // Persist session depending on user choice
+    persistenceService.saveSession(key, loggedUser, rememberMe);
   };
 
   const handleLogout = () => {
@@ -54,6 +54,11 @@ const App: React.FC = () => {
   };
 
   const startScenario = (id: string) => {
+    // Block scenario start if no API Key (double check)
+    if (!apiKey) {
+      alert("Para iniciar uma Simulação com IA, você precisa configurar uma Chave API nas Configurações ou no Login.");
+      return;
+    }
     setActiveScenarioId(id);
     setCurrentView('simulation_active');
   };
@@ -106,6 +111,7 @@ const App: React.FC = () => {
           scenario={scenario} 
           onExit={() => setCurrentView('dashboard')} 
           apiKey={apiKey}
+          user={user}
         />
       );
     }
@@ -120,11 +126,12 @@ const App: React.FC = () => {
           }}
           currentUserRole={multiplayerRole}
           roomId={activeRoomId}
+          user={user}
         />
       );
     }
 
-    // Role Selection Screen for Multiplayer (Step 2 of Joining)
+    // Role Selection Screen for Multiplayer
     if (currentView === 'multiplayer' && showRoleSelection) {
       return (
         <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -233,21 +240,28 @@ const App: React.FC = () => {
       );
     }
 
-    // Lobby Screen (Google Meet Style)
+    // Lobby Screen
     if (currentView === 'multiplayer') {
       const now = new Date();
       return (
         <div className="h-full flex flex-col md:flex-row p-6 md:p-12 gap-8 md:gap-16 items-center justify-center bg-white">
-           
-           {/* Left Content */}
            <div className="max-w-md w-full space-y-8">
               <div className="space-y-4">
                 <h1 className="text-3xl md:text-5xl font-serif font-bold text-legal-900 leading-tight">
                   Audiências virtuais e simulações premium.
                 </h1>
                 <p className="text-lg text-gray-500">
-                  A JuriSim conecta estudantes, advogados e juízes em um ambiente seguro para prática forense com suporte de IA.
+                  A JuriSim conecta estudantes e profissionais. Participe de audiências ao vivo mesmo sem chave API.
                 </p>
+                {!apiKey && (
+                   <div className="flex items-start gap-3 bg-amber-50 p-4 rounded-lg border border-amber-100 text-sm text-amber-800">
+                      <AlertCircle size={20} className="shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold">Modo Convidado</p>
+                        <p>Você está logado sem chave API. A Simulação com IA está desativada, mas você pode usar o Multiplayer livremente.</p>
+                      </div>
+                   </div>
+                )}
               </div>
 
               <div className="flex flex-col sm:flex-row items-start gap-4">
@@ -265,7 +279,7 @@ const App: React.FC = () => {
                     </div>
                     <input 
                       type="text" 
-                      placeholder="Digite um código ou link"
+                      placeholder="Código ou link"
                       value={joinCodeInput}
                       onChange={(e) => setJoinCodeInput(e.target.value)}
                       className="w-full sm:w-64 pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-legal-500 focus:border-legal-500 outline-none text-gray-700"
@@ -275,25 +289,16 @@ const App: React.FC = () => {
                        disabled={joinCodeInput.length < 3}
                        className="text-legal-600 font-medium hover:bg-legal-50 px-4 py-3 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition"
                     >
-                       Participar
+                       Entrar
                     </button>
                  </div>
               </div>
-
-              <div className="pt-8 border-t border-gray-100">
-                 <p className="text-sm text-gray-400">
-                    <span className="font-semibold text-legal-600">Saiba mais</span> sobre como gravar audiências e emitir certificados.
-                 </p>
-              </div>
            </div>
 
-           {/* Right Content - Hero Image/Slider Placeholder */}
            <div className="hidden md:flex flex-1 items-center justify-center relative w-full max-w-lg aspect-square">
-               {/* Decorative Circles */}
                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-100 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-blob"></div>
                <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-100 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-blob animation-delay-2000"></div>
                
-               {/* Card */}
                <div className="relative bg-white p-6 rounded-2xl shadow-2xl border border-gray-100 w-full">
                   <div className="aspect-video bg-legal-900 rounded-lg mb-4 flex items-center justify-center relative overflow-hidden group">
                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
@@ -362,6 +367,7 @@ const App: React.FC = () => {
     <Layout 
       user={user} 
       currentView={currentView} 
+      hasApiKey={!!apiKey}
       onChangeView={setCurrentView}
       onLogout={handleLogout}
     >

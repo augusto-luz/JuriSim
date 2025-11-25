@@ -1,20 +1,21 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChatMessage, Scenario } from '../types';
+import { ChatMessage, Scenario, User } from '../types';
 import { generateCharacterResponse } from '../services/geminiService';
 import { persistenceService } from '../services/persistence';
 import { SYSTEM_PROMPTS } from '../constants';
-import { Send, User as UserIcon, Bot, ArrowLeft, Loader2, RefreshCw, AlertCircle } from 'lucide-react';
+import { Send, User as UserIcon, Bot, ArrowLeft, Loader2, RefreshCw, AlertCircle, Lock } from 'lucide-react';
 
 interface SimulationChatProps {
   scenario: Scenario;
   onExit: () => void;
   apiKey: string;
+  user: User;
 }
 
-export const SimulationChat: React.FC<SimulationChatProps> = ({ scenario, onExit, apiKey }) => {
+export const SimulationChat: React.FC<SimulationChatProps> = ({ scenario, onExit, apiKey, user }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    // Try to load from persistence first
-    const saved = persistenceService.getChatHistory(scenario.id);
+    // Try to load from persistence first (User Scoped)
+    const saved = persistenceService.getChatHistory(user.id, scenario.id);
     if (saved && saved.length > 0) return saved;
     return [
       {
@@ -34,13 +35,13 @@ export const SimulationChat: React.FC<SimulationChatProps> = ({ scenario, onExit
 
   // Auto-save whenever messages change
   useEffect(() => {
-    persistenceService.saveChatHistory(scenario.id, messages);
+    persistenceService.saveChatHistory(user.id, scenario.id, messages);
     
     // Also update "progress" slightly just to show interactivity
     if (messages.length > 2) {
-      persistenceService.saveScenarioProgress(scenario.id, Math.min(100, messages.length * 5));
+      persistenceService.saveScenarioProgress(user.id, scenario.id, Math.min(100, messages.length * 5));
     }
-  }, [messages, scenario.id]);
+  }, [messages, scenario.id, user.id]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -60,7 +61,7 @@ export const SimulationChat: React.FC<SimulationChatProps> = ({ scenario, onExit
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
-      senderName: 'Advogado (Você)',
+      senderName: user.name || 'Advogado (Você)',
       text: inputValue,
       timestamp: Date.now()
     };
@@ -100,7 +101,7 @@ export const SimulationChat: React.FC<SimulationChatProps> = ({ scenario, onExit
 
   const handleReset = () => {
     if(confirm("Deseja reiniciar esta simulação? O histórico será perdido.")) {
-      persistenceService.clearChatHistory(scenario.id);
+      persistenceService.clearChatHistory(user.id, scenario.id);
       setMessages([{
         id: Date.now().toString(),
         role: 'model',
@@ -110,6 +111,24 @@ export const SimulationChat: React.FC<SimulationChatProps> = ({ scenario, onExit
       }]);
     }
   };
+
+  // If no API Key, show lock screen (Safety fallback if they bypass Layout check)
+  if (!apiKey) {
+    return (
+       <div className="flex flex-col h-full items-center justify-center bg-slate-50 p-8 text-center">
+          <div className="bg-slate-200 p-6 rounded-full mb-6">
+             <Lock size={48} className="text-slate-500"/>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Simulação Bloqueada</h2>
+          <p className="text-gray-500 max-w-md mb-8">
+             Você entrou no modo convidado sem uma Chave API. Para interagir com o Juiz IA, você precisa adicionar uma chave nas configurações ou fazer login novamente.
+          </p>
+          <button onClick={onExit} className="px-6 py-3 bg-legal-800 text-white rounded-lg font-bold">
+             Voltar ao Menu
+          </button>
+       </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full bg-slate-100">

@@ -9,7 +9,8 @@ import {
   BookOpen,
   Menu,
   X,
-  HelpCircle
+  HelpCircle,
+  Lock
 } from 'lucide-react';
 import { User } from '../types';
 
@@ -17,25 +18,32 @@ interface LayoutProps {
   children: React.ReactNode;
   user: User;
   currentView: string;
+  hasApiKey: boolean;
   onChangeView: (view: string) => void;
   onLogout: () => void;
 }
 
-const NavItem = ({ icon: Icon, label, active, onClick }: any) => (
+const NavItem = ({ icon: Icon, label, active, onClick, disabled = false, badge }: any) => (
   <button
-    onClick={onClick}
-    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200 ${
+    onClick={disabled ? undefined : onClick}
+    disabled={disabled}
+    className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-colors duration-200 ${
       active 
         ? 'bg-legal-800 text-white shadow-md' 
-        : 'text-legal-300 hover:bg-legal-800/50 hover:text-white'
+        : disabled 
+          ? 'text-legal-600 cursor-not-allowed opacity-60' 
+          : 'text-legal-300 hover:bg-legal-800/50 hover:text-white'
     }`}
   >
-    <Icon size={20} />
-    <span className="font-medium">{label}</span>
+    <div className="flex items-center space-x-3">
+       <Icon size={20} />
+       <span className="font-medium">{label}</span>
+    </div>
+    {badge}
   </button>
 );
 
-export const Layout: React.FC<LayoutProps> = ({ children, user, currentView, onChangeView, onLogout }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, user, currentView, hasApiKey, onChangeView, onLogout }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
@@ -72,6 +80,8 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, currentView, onC
             icon={MessageSquare} 
             label="Simulação IA" 
             active={currentView === 'simulation'} 
+            disabled={!hasApiKey}
+            badge={!hasApiKey && <Lock size={14} className="text-legal-500"/>}
             onClick={() => onChangeView('simulation')} 
           />
           <NavItem 
@@ -121,7 +131,17 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, currentView, onC
       {isMobileMenuOpen && (
         <div className="md:hidden fixed inset-0 z-40 bg-legal-900 pt-20 px-4 space-y-2">
           <NavItem icon={LayoutDashboard} label="Dashboard" active={currentView === 'dashboard'} onClick={() => {onChangeView('dashboard'); setIsMobileMenuOpen(false);}} />
-          <NavItem icon={MessageSquare} label="Simulação IA" active={currentView === 'simulation'} onClick={() => {onChangeView('simulation'); setIsMobileMenuOpen(false);}} />
+          
+          <button 
+            disabled={!hasApiKey}
+            onClick={() => {onChangeView('simulation'); setIsMobileMenuOpen(false);}}
+            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg ${!hasApiKey ? 'text-legal-600' : 'text-legal-300'}`}
+          >
+             <MessageSquare size={20}/>
+             <span>Simulação IA</span>
+             {!hasApiKey && <Lock size={14} className="ml-auto"/>}
+          </button>
+          
           <NavItem icon={Video} label="Audiência ao Vivo" active={currentView === 'multiplayer'} onClick={() => {onChangeView('multiplayer'); setIsMobileMenuOpen(false);}} />
           <div className="border-t border-legal-800 mt-4 pt-4">
              <NavItem icon={LogOut} label="Sair" active={false} onClick={() => {onLogout(); setIsMobileMenuOpen(false);}} />

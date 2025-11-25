@@ -1,18 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CourtRole, Participant } from '../types';
+import { CourtRole, Participant, User, UserRole } from '../types';
 import { roomSignaling, SignalingEvent } from '../services/roomSignaling';
 import { 
   Mic, MicOff, Video as VideoIcon, VideoOff, 
   PhoneOff, Users, Shield, 
-  Gavel, Volume2, VolumeX, UserPlus, Pause,
-  Pin, PinOff, LogOut, Hand, AlertCircle, X,
-  Edit3, Check, Info, Copy, CheckCircle
+  Gavel, UserPlus,
+  Pin, PinOff, LogOut, Hand, X,
+  Edit3, Check, Info, Copy, CheckCircle,
+  Play, Square, AlertOctagon,
+  ShieldCheck
 } from 'lucide-react';
 
 interface MultiplayerRoomProps {
   onExit: () => void;
   currentUserRole: CourtRole;
-  roomId?: string; 
+  roomId?: string;
+  user: User; // User profile for Admin check
 }
 
 const getMockParticipants = (userRole: CourtRole): Participant[] => {
@@ -26,17 +29,20 @@ const getMockParticipants = (userRole: CourtRole): Participant[] => {
   return allPossible.filter(p => p.role !== userRole);
 };
 
-export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, currentUserRole, roomId = 'abc-def-ghi' }) => {
+export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, currentUserRole, roomId = 'abc-def-ghi', user }) => {
+  // Check permissions: Judge Role OR Admin User
+  const hasJudgePower = currentUserRole === CourtRole.JUDGE || user.role === UserRole.ADMIN;
+
   // Local User Setup
-  const [localUser] = useState<Participant>({
+  const [localUser] = useState<Participant>(() => ({
     id: `user-${Date.now()}`, // Unique session ID
-    name: `Você (${currentUserRole})`,
+    name: `${user.name} (${currentUserRole})`,
     role: currentUserRole,
     isMuted: false,
     isVideoOff: false,
     status: 'active',
     audioLevel: 0
-  });
+  }));
 
   const [participants, setParticipants] = useState<Participant[]>(() => getMockParticipants(currentUserRole));
   
@@ -48,16 +54,22 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
   const [isHandRaised, setIsHandRaised] = useState(false);
   
   const [caseTitle, setCaseTitle] = useState("001/2024 - Ação Cível (Ao Vivo)");
-  const [caseDescription, setCaseDescription] = useState("Caso do Celular com Defeito");
   const [isEditingInfo, setIsEditingInfo] = useState(false);
   const [tempTitle, setTempTitle] = useState(caseTitle);
-  const [tempDesc, setTempDesc] = useState(caseDescription);
   
   const [waitingRoomWitnesses, setWaitingRoomWitnesses] = useState(['Sra. Ana (Testemunha 2)', 'Perito Roberto']);
   const [showMeetingInfo, setShowMeetingInfo] = useState(true);
   const [isCopied, setIsCopied] = useState(false);
   const [isJudgeDrawerOpen, setIsJudgeDrawerOpen] = useState(false);
   
+  // Hearing Status
+  const [hearingStatus, setHearingStatus] = useState<'waiting' | 'running' | 'ended'>('waiting');
+  
+  // Session Timer
+  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
+  const [sessionDuration, setSessionDuration] = useState<string>('00:00');
+  const timerIntervalRef = useRef<number | null>(null);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -66,8 +78,6 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
   const broadcastIntervalRef = useRef<number | null>(null);
 
   const [isInWaitingRoom, setIsInWaitingRoom] = useState(currentUserRole === CourtRole.WITNESS);
-  const [ambientSoundPlaying, setAmbientSoundPlaying] = useState(false);
-  const [ambientAudio] = useState(new Audio('https://assets.mixkit.co/active_storage/sfx/2517/2517-preview.mp3'));
 
   // --- SIGNALING & MULTIPLAYER LOGIC ---
   useEffect(() => {
@@ -76,35 +86,68 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
 
     // 2. Listen for events
     const unsubscribe = roomSignaling.subscribe((event: SignalingEvent) => {
+      
+      // HEARING STATUS CHANGE & TIMER SYNC
+      if (event.type === 'HEARING_STATUS') {
+         setHearingStatus(event.payload.status);
+         
+         if (event.payload.status === 'running') {
+             // Use provided start time (sync) or fallback to now
+             const startTime = event.payload.startTime || Date.now();
+             setSessionStartTime(startTime);
+         }
+         
+         if (event.payload.status === 'ended' && timerIntervalRef.current) {
+             clearInterval(timerIntervalRef.current);
+         }
+      }
+
+      // REMOTE MUTE FORCE
+      if (event.type === 'MUTE_FORCE') {
+        // If targetId is provided and matches mine, OR no targetId (all), mute me.
+        if (!event.payload.targetId || event.payload.targetId === localUser.id) {
+           if (!isMuted && localStream) {
+               localStream.getAudioTracks().forEach(t => t.enabled = false);
+               setIsMuted(true);
+               // Notify others I am now muted
+               setTimeout(() => {
+                 roomSignaling.sendUpdate({ ...localUser, isMuted: true, isVideoOff, isHandRaised, status: 'active' });
+               }, 100);
+           }
+        }
+      }
+
       setParticipants(prev => {
         let updated = [...prev];
 
         if (event.type === 'JOIN') {
-          // If a real user joins, remove any mock that holds the same role
-          updated = updated.filter(p => p.role !== event.payload.role || !p.id.startsWith('mock-'));
+          // IMPORTANT: If a real user joins, remove any mock that holds the same role
+          // Logic: Remove mock if it has same role as new user
+          updated = updated.filter(p => !(p.role === event.payload.role && p.id.startsWith('mock-')));
           
           // Add new user if not exists
           if (!updated.find(p => p.id === event.payload.id)) {
             // Also reply with my own existence so they know I'm here
+            // But verify we don't spam updates unnecessarily
             roomSignaling.broadcast({ 
               type: 'UPDATE', 
               payload: { ...localUser, id: localUser.id, isMuted, isVideoOff, isHandRaised } 
             });
+
+            // DISTRIBUTED SYNC: If I am here and status is running, tell new user the time.
+            if (hearingStatus !== 'waiting') {
+                setTimeout(() => roomSignaling.sendHearingStatus(hearingStatus, sessionStartTime || undefined), 500);
+            }
+
             return [...updated, event.payload];
           }
         } 
         else if (event.type === 'UPDATE') {
-           updated = updated.map(p => {
-             if (p.id === event.payload.id) {
-               return { ...p, ...event.payload };
-             }
-             return p;
-           });
+           updated = updated.map(p => p.id === event.payload.id ? { ...p, ...event.payload } : p);
            
-           // If update comes from a new user we didn't track yet (rare race condition)
-           if (!updated.find(p => p.id === event.payload.id)) {
-              // It's tricky to reconstruct full participant from partial update, 
-              // but usually JOIN happens first. We'll ignore for safety or add placeholder.
+           // Aggressive Mock Cleanup: If update comes from a real user, ensure no mock exists for that role
+           if (!event.payload.id.startsWith('mock-')) {
+              updated = updated.filter(p => !(p.role === event.payload.role && p.id.startsWith('mock-')));
            }
         }
         else if (event.type === 'AUDIO_LEVEL') {
@@ -113,6 +156,12 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
            );
         }
         else if (event.type === 'LEAVE') {
+           // SELF KICK CHECK
+           if (event.payload.id === localUser.id) {
+              alert("Você foi removido da sala pelo Juiz.");
+              onExit();
+              return prev; 
+           }
            updated = updated.filter(p => p.id !== event.payload.id);
         }
 
@@ -125,14 +174,30 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
       if (!isMuted) {
         roomSignaling.sendAudioLevel(localUser.id, localAudioLevel);
       }
-    }, 150); // Send every 150ms
+    }, 150);
 
     return () => {
       unsubscribe();
       roomSignaling.disconnect();
       if (broadcastIntervalRef.current) clearInterval(broadcastIntervalRef.current);
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     };
-  }, [roomId, localUser.id, isMuted, isVideoOff, isHandRaised, localAudioLevel]); // Deps for broadcast closures
+  }, [roomId, localUser, isMuted, isVideoOff, isHandRaised, localAudioLevel, currentUserRole, hearingStatus, sessionStartTime]);
+
+  // Timer Logic
+  useEffect(() => {
+      if (hearingStatus === 'running' && sessionStartTime) {
+          timerIntervalRef.current = window.setInterval(() => {
+              const diff = Date.now() - sessionStartTime;
+              const minutes = Math.floor(diff / 60000);
+              const seconds = Math.floor((diff % 60000) / 1000);
+              setSessionDuration(`${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
+          }, 1000);
+      } else if (hearingStatus === 'waiting') {
+        setSessionDuration('00:00');
+      }
+      return () => { if (timerIntervalRef.current) clearInterval(timerIntervalRef.current); };
+  }, [hearingStatus, sessionStartTime]);
 
 
   // --- MEDIA SETUP ---
@@ -172,7 +237,10 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
           
           const updateAudioLevel = () => {
             if (!analyser || !audioContext) return;
-            if (audioContext.state === 'suspended') audioContext.resume();
+            // Robust resume attempt
+            if (audioContext.state === 'suspended') {
+                audioContext.resume().catch(() => {}); 
+            }
 
             const dataArray = new Uint8Array(analyser.frequencyBinCount);
             analyser.getByteFrequencyData(dataArray);
@@ -202,7 +270,7 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
     };
     window.addEventListener('click', handleUserInteraction);
 
-    if (!isInWaitingRoom) startCamera();
+    if (!isInWaitingRoom && hearingStatus !== 'ended') startCamera();
     else if (localStream) {
          localStream.getTracks().forEach(track => track.stop());
          setLocalStream(null);
@@ -215,7 +283,7 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
       if (audioContextRef.current) audioContextRef.current.close();
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [isInWaitingRoom]);
+  }, [isInWaitingRoom, hearingStatus]);
 
   // Mock Audio Fluctuation (Only for mock participants)
   useEffect(() => {
@@ -254,7 +322,6 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
 
   // Judge controls
   const admitWitness = (name: string) => {
-    // Logic for admitting (adds a mock witness for demo, real witness would rely on signaling 'status' update)
     const newId = `mock-witness-${Date.now()}`;
     setParticipants(prev => [...prev, { id: newId, name: name, role: CourtRole.WITNESS, isMuted: false, isVideoOff: false, status: 'active', audioLevel: 0 }]);
     setWaitingRoomWitnesses(prev => prev.filter(w => w !== name));
@@ -263,9 +330,21 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
 
   const kickParticipant = (id: string) => {
     if(confirm("Remover participante?")) {
+      // Logic for MVP: Local removal + broadcast. 
+      // The peer receiving 'LEAVE' with their ID will trigger their own exit.
       setParticipants(prev => prev.filter(p => p.id !== id));
-      roomSignaling.broadcast({ type: 'LEAVE', payload: { id } }); // Force notify others
+      roomSignaling.broadcast({ type: 'LEAVE', payload: { id } }); 
     }
+  };
+
+  const muteAll = () => {
+      if(confirm("Deseja silenciar todos os microfones?")) {
+          // Send signal to FORCE mute others
+          roomSignaling.forceMuteAll();
+          
+          // Also mute local mocks
+          setParticipants(prev => prev.map(p => ({...p, isMuted: true})));
+      }
   };
 
   const pinnedParticipant = participants.find(p => p.isPinned);
@@ -273,24 +352,79 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
     setParticipants(prev => prev.map(p => p.id === id ? { ...p, isPinned: !p.isPinned } : { ...p, isPinned: false }));
   };
 
+  const startHearing = () => {
+    if (confirm("Deseja iniciar oficialmente a gravação e a audiência?")) {
+      const startTime = Date.now();
+      setHearingStatus('running');
+      setSessionStartTime(startTime);
+      roomSignaling.sendHearingStatus('running', startTime);
+    }
+  };
+
+  const endHearing = () => {
+    if (confirm("Tem certeza que deseja encerrar a sessão? Isso fechará a sala para todos.")) {
+      setHearingStatus('ended');
+      roomSignaling.sendHearingStatus('ended');
+    }
+  };
+
+  // --- RENDERS ---
+
   if (isInWaitingRoom) {
-     return ( /* ... Waiting Room JSX (Unchanged for brevity, but logically same) ... */ 
+     return (
       <div className="h-full bg-slate-900 flex flex-col items-center justify-center text-white relative">
-         <div className="bg-black/50 p-10 rounded-2xl border border-white/10 text-center max-w-md">
+         <div className="bg-black/50 p-10 rounded-2xl border border-white/10 text-center max-w-md animate-in zoom-in duration-300">
             <Shield size={48} className="text-legal-400 mx-auto mb-6" />
             <h2 className="text-3xl font-serif font-bold mb-2">Sala de Espera</h2>
-            <p className="text-gray-300">Aguardando autorização do Juiz...</p>
-            <div className="mt-8">
-               <button onClick={() => setIsInWaitingRoom(false)} className="px-6 py-3 bg-amber-600 rounded-lg font-bold">Entrar (Simulação)</button>
+            <p className="text-gray-300 mb-6">Aguardando autorização do Juiz para entrar no recinto...</p>
+            <div className="flex items-center justify-center gap-2 text-xs text-gray-500 uppercase tracking-widest">
+               <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></span>
+               Em espera
             </div>
+            {/* Admin Override for Waiting Room */}
+            {user.role === UserRole.ADMIN && (
+                <div className="mt-8 border-t border-white/10 pt-4">
+                    <p className="text-xs text-amber-500 font-bold mb-2"><ShieldCheck size={12} className="inline"/> Acesso Administrativo</p>
+                    <button onClick={() => setIsInWaitingRoom(false)} className="px-6 py-2 bg-slate-700 rounded-lg text-sm font-bold hover:bg-slate-600 transition">
+                        Forçar Entrada
+                    </button>
+                </div>
+            )}
          </div>
       </div>
      );
   }
 
+  if (hearingStatus === 'ended') {
+    return (
+      <div className="h-full bg-slate-950 flex flex-col items-center justify-center text-white relative animate-in fade-in duration-700">
+         <div className="text-center p-8 max-w-lg">
+            <div className="mx-auto w-20 h-20 bg-legal-800 rounded-full flex items-center justify-center mb-6">
+               <Gavel size={40} className="text-white"/>
+            </div>
+            <h2 className="text-4xl font-serif font-bold mb-4">Audiência Encerrada</h2>
+            <p className="text-gray-400 text-lg mb-8">A sessão foi finalizada pelo Juiz Presidente.</p>
+            
+            <div className="bg-slate-900 p-6 rounded-xl border border-slate-800 mb-8 text-left">
+               <h3 className="text-sm font-bold text-gray-500 uppercase mb-4">Resumo da Sessão</h3>
+               <div className="space-y-2">
+                  <div className="flex justify-between text-sm"><span>Duração:</span> <span className="text-white font-mono">{sessionDuration}</span></div>
+                  <div className="flex justify-between text-sm"><span>Participantes:</span> <span className="text-white">{participants.length + 1}</span></div>
+                  <div className="flex justify-between text-sm"><span>Status:</span> <span className="text-green-500 font-bold">Concluído</span></div>
+               </div>
+            </div>
+
+            <button onClick={onExit} className="px-8 py-3 bg-white text-slate-900 font-bold rounded-lg hover:bg-gray-200 transition">
+               Voltar ao Início
+            </button>
+         </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full bg-slate-950 text-white overflow-hidden relative">
-      {showMeetingInfo && (
+      {showMeetingInfo && hearingStatus !== 'ended' && (
         <div className="absolute bottom-24 left-4 z-50 bg-white text-slate-900 p-6 rounded-xl shadow-2xl w-80 animate-in slide-in-from-bottom-5">
            <div className="flex justify-between mb-4">
               <h3 className="font-bold">Sala: {roomId}</h3>
@@ -308,23 +442,30 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
       {/* Header */}
       <div className="h-14 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900 shrink-0 z-20">
          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-red-400 text-xs font-bold uppercase border border-red-900/50 bg-red-950/30 px-2 py-1 rounded">
-               <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div> Ao Vivo
-            </div>
+            {hearingStatus === 'running' ? (
+                <div className="flex items-center gap-2 text-red-400 text-xs font-bold uppercase border border-red-900/50 bg-red-950/30 px-2 py-1 rounded">
+                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div> Gravando • {sessionDuration}
+                </div>
+            ) : (
+                <div className="flex items-center gap-2 text-amber-400 text-xs font-bold uppercase border border-amber-900/50 bg-amber-950/30 px-2 py-1 rounded">
+                  <AlertOctagon size={12}/> Aguardando Início
+                </div>
+            )}
+
             {isEditingInfo ? (
                <div className="flex items-center gap-2">
                   <input value={tempTitle} onChange={e=>setTempTitle(e.target.value)} className="bg-slate-800 px-2 py-1 rounded text-sm"/>
                   <button onClick={() => {setCaseTitle(tempTitle); setIsEditingInfo(false);}} className="text-green-500"><Check size={16}/></button>
                </div>
             ) : (
-               <div className="flex items-center gap-2 group cursor-pointer" onClick={() => currentUserRole === CourtRole.JUDGE && setIsEditingInfo(true)}>
+               <div className="flex items-center gap-2 group cursor-pointer" onClick={() => hasJudgePower && setIsEditingInfo(true)}>
                   <span className="font-semibold text-sm md:text-base">{caseTitle}</span>
-                  {currentUserRole === CourtRole.JUDGE && <Edit3 size={12} className="opacity-0 group-hover:opacity-100"/>}
+                  {hasJudgePower && <Edit3 size={12} className="opacity-0 group-hover:opacity-100"/>}
                </div>
             )}
          </div>
          <div className="flex items-center gap-4">
-            {currentUserRole === CourtRole.JUDGE && (
+            {hasJudgePower && (
               <button onClick={() => setIsJudgeDrawerOpen(!isJudgeDrawerOpen)} className="md:hidden p-2 text-amber-400">
                 <Gavel size={20} />
               </button>
@@ -336,6 +477,17 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
       </div>
 
       <div className="flex flex-1 overflow-hidden relative">
+        {/* Waiting Overlay for Participants */}
+        {hearingStatus === 'waiting' && !hasJudgePower && (
+           <div className="absolute inset-0 z-30 bg-black/40 backdrop-blur-sm flex items-center justify-center">
+              <div className="bg-slate-900 p-8 rounded-xl border border-slate-700 text-center max-w-md shadow-2xl">
+                  <Gavel size={48} className="text-amber-500 mx-auto mb-4"/>
+                  <h3 className="text-xl font-bold mb-2">A audiência iniciará em breve</h3>
+                  <p className="text-slate-400">Por favor, mantenha seu microfone desligado enquanto o Meritíssimo Juiz prepara a sessão.</p>
+              </div>
+           </div>
+        )}
+
         {/* Grid */}
         <div className="flex-1 p-4 overflow-y-auto custom-scrollbar bg-slate-950">
            <div className={`grid gap-4 transition-all ${pinnedParticipant ? 'grid-cols-4 grid-rows-4 h-full' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'}`}>
@@ -361,6 +513,7 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
                     <span className="bg-black/60 px-2 py-1 rounded text-xs font-bold truncate max-w-[80%]">Você ({currentUserRole})</span>
                     {!isMuted && <div className="h-6 w-1.5 bg-slate-800 rounded-full overflow-hidden flex flex-col justify-end"><div style={{height: `${localAudioLevel}%`}} className="w-full bg-green-500 transition-all"/></div>}
                  </div>
+                 {mediaError && <div className="absolute inset-0 flex items-center justify-center bg-slate-900 text-xs text-red-400 p-2 text-center">{mediaError}</div>}
               </div>
 
               {/* Remote Participants */}
@@ -369,8 +522,8 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
                     <img src={`https://picsum.photos/seed/${p.id}/800/600`} className="w-full h-full object-cover opacity-90"/>
                     
                     {/* Judge Actions Overlay */}
-                    {currentUserRole === CourtRole.JUDGE && (
-                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition">
+                    {hasJudgePower && (
+                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition z-20">
                           <button onClick={() => kickParticipant(p.id)} className="p-2 bg-red-600 rounded-full hover:bg-red-500"><LogOut size={16}/></button>
                           <button onClick={() => togglePinParticipant(p.id)} className="p-2 bg-slate-200 text-slate-900 rounded-full hover:bg-white"><Pin size={16}/></button>
                        </div>
@@ -395,13 +548,32 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
         </div>
 
         {/* Judge Sidebar (Drawer on Mobile) */}
-        {(currentUserRole === CourtRole.JUDGE && (isJudgeDrawerOpen || window.innerWidth >= 768)) && (
-           <div className={`fixed inset-y-0 right-0 w-72 bg-slate-900 border-l border-slate-800 z-40 transform transition md:static md:translate-x-0 ${isJudgeDrawerOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+        {(hasJudgePower && (isJudgeDrawerOpen || window.innerWidth >= 768)) && (
+           <div className={`fixed inset-y-0 right-0 w-72 bg-slate-900 border-l border-slate-800 z-40 transform transition-transform duration-300 md:static md:translate-x-0 ${isJudgeDrawerOpen ? 'translate-x-0' : 'translate-x-full'}`}>
               <div className="p-4 border-b border-slate-800 flex justify-between items-center">
-                 <h3 className="text-amber-500 font-serif font-bold flex items-center gap-2"><Gavel size={18}/> Mesa do Juiz</h3>
+                 <h3 className="text-amber-500 font-serif font-bold flex items-center gap-2"><Gavel size={18}/> Mesa do Juiz {user.role === UserRole.ADMIN && '(Admin)'}</h3>
                  <button className="md:hidden" onClick={() => setIsJudgeDrawerOpen(false)}><X/></button>
               </div>
               <div className="p-4 space-y-6">
+                 
+                 {/* Hearing Controls */}
+                 <div className="bg-slate-800 rounded-lg p-3 space-y-3">
+                    <h4 className="text-xs font-bold text-slate-500 uppercase">Controle da Sessão</h4>
+                    {hearingStatus === 'waiting' && (
+                       <button onClick={startHearing} className="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg transition">
+                          <Play size={18} fill="currentColor"/> Iniciar Audiência
+                       </button>
+                    )}
+                    {hearingStatus === 'running' && (
+                       <button onClick={endHearing} className="w-full flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-lg transition animate-in pulse">
+                          <Square size={18} fill="currentColor"/> Encerrar Sessão
+                       </button>
+                    )}
+                    {hearingStatus === 'ended' && (
+                        <div className="text-center text-sm text-gray-400 py-2">Sessão finalizada.</div>
+                    )}
+                 </div>
+
                  <div>
                     <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">Sala de Espera</h4>
                     {waitingRoomWitnesses.map(w => (
@@ -412,9 +584,12 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
                     ))}
                     {waitingRoomWitnesses.length === 0 && <p className="text-xs text-slate-600 italic">Vazia</p>}
                  </div>
-                 <div className="grid grid-cols-2 gap-2">
-                    <button className="bg-slate-800 p-3 rounded flex flex-col items-center gap-1 hover:bg-slate-700"><Pause size={20} className="text-amber-500"/><span className="text-[10px]">Pausar</span></button>
-                    <button className="bg-slate-800 p-3 rounded flex flex-col items-center gap-1 hover:bg-slate-700"><MicOff size={20} className="text-red-500"/><span className="text-[10px]">Silenciar Todos</span></button>
+
+                 <div className="grid grid-cols-1 gap-2">
+                    <button onClick={muteAll} className="bg-slate-800 p-3 rounded flex items-center justify-center gap-2 hover:bg-slate-700 transition">
+                        <MicOff size={18} className="text-red-500"/>
+                        <span className="text-xs font-bold">Silenciar Todos</span>
+                    </button>
                  </div>
               </div>
            </div>

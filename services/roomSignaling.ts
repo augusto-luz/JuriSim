@@ -4,7 +4,9 @@ export type SignalingEvent =
   | { type: 'JOIN', payload: Participant }
   | { type: 'UPDATE', payload: Partial<Participant> & { id: string } }
   | { type: 'AUDIO_LEVEL', payload: { id: string, level: number } }
-  | { type: 'LEAVE', payload: { id: string } };
+  | { type: 'LEAVE', payload: { id: string } }
+  | { type: 'MUTE_FORCE', payload: { targetId?: string } } // targetId null means ALL
+  | { type: 'HEARING_STATUS', payload: { status: 'waiting' | 'running' | 'ended', startTime?: number } };
 
 class RoomSignalingService {
   private channel: BroadcastChannel | null = null;
@@ -72,10 +74,23 @@ class RoomSignalingService {
   }
 
   sendAudioLevel(id: string, level: number) {
-    // Optimization: broadcast audio level (throttle handled by caller usually, but lightweight here)
     this.broadcast({
       type: 'AUDIO_LEVEL',
       payload: { id, level }
+    });
+  }
+
+  sendHearingStatus(status: 'waiting' | 'running' | 'ended', startTime?: number) {
+    this.broadcast({
+      type: 'HEARING_STATUS',
+      payload: { status, startTime }
+    });
+  }
+
+  forceMuteAll() {
+    this.broadcast({
+      type: 'MUTE_FORCE',
+      payload: {} // No targetId implies all except sender (handled in logic)
     });
   }
 }

@@ -1,4 +1,4 @@
-import { ChatMessage, User, Scenario, UserRole } from '../types';
+import { ChatMessage, User, Scenario } from '../types';
 import { SCENARIOS, MOCK_USER } from '../constants';
 
 const KEYS = {
@@ -6,26 +6,42 @@ const KEYS = {
   SESSION: 'jurisim_session', // Stores API Key and Auth State
   CHAT_HISTORY: 'jurisim_chat_',
   SCENARIO_PROGRESS: 'jurisim_progress_',
-  APP_SETTINGS: 'jurisim_settings'
 };
 
 export const persistenceService = {
   // --- Session Management ---
-  saveSession: (apiKey: string, user: User) => {
+  saveSession: (apiKey: string, user: User, remember: boolean) => {
+    const storage = remember ? localStorage : sessionStorage;
+    
     // Simple obfuscation to prevent casual shoulder-surfing. 
-    // In a real app, never store raw API keys in localStorage without backend encryption.
     const sessionData = {
       key: btoa(apiKey),
       timestamp: Date.now()
     };
-    localStorage.setItem(KEYS.SESSION, JSON.stringify(sessionData));
-    localStorage.setItem(KEYS.USER, JSON.stringify(user));
+    
+    // Clear other storage to prevent sync issues
+    if (remember) {
+        sessionStorage.removeItem(KEYS.SESSION);
+        sessionStorage.removeItem(KEYS.USER);
+    } else {
+        localStorage.removeItem(KEYS.SESSION);
+        localStorage.removeItem(KEYS.USER);
+    }
+
+    storage.setItem(KEYS.SESSION, JSON.stringify(sessionData));
+    storage.setItem(KEYS.USER, JSON.stringify(user));
   },
 
   restoreSession: (): { apiKey: string, user: User } | null => {
     try {
-      const sessionStored = localStorage.getItem(KEYS.SESSION);
-      const userStored = localStorage.getItem(KEYS.USER);
+      // Check SessionStorage first (active tab), then LocalStorage
+      let sessionStored = sessionStorage.getItem(KEYS.SESSION);
+      let userStored = sessionStorage.getItem(KEYS.USER);
+
+      if (!sessionStored || !userStored) {
+         sessionStored = localStorage.getItem(KEYS.SESSION);
+         userStored = localStorage.getItem(KEYS.USER);
+      }
 
       if (sessionStored && userStored) {
         const session = JSON.parse(sessionStored);
@@ -35,13 +51,13 @@ export const persistenceService = {
         const apiKey = atob(session.key);
         
         // Basic validation
-        if (apiKey && user && user.id) {
+        if (user && user.id) {
           return { apiKey, user };
         }
       }
     } catch (e) {
       console.error("Failed to restore session", e);
-      localStorage.removeItem(KEYS.SESSION);
+      persistenceService.clearSession();
     }
     return null;
   },
@@ -49,43 +65,46 @@ export const persistenceService = {
   clearSession: () => {
     localStorage.removeItem(KEYS.SESSION);
     localStorage.removeItem(KEYS.USER);
+    sessionStorage.removeItem(KEYS.SESSION);
+    sessionStorage.removeItem(KEYS.USER);
   },
 
   // --- User Data ---
   getUser: (): User => {
-    const stored = localStorage.getItem(KEYS.USER);
+    const stored = localStorage.getItem(KEYS.USER) || sessionStorage.getItem(KEYS.USER);
     return stored ? JSON.parse(stored) : MOCK_USER;
   },
   
-  // --- Chat History (Per Scenario) ---
-  getChatHistory: (scenarioId: string): ChatMessage[] | null => {
-    const stored = localStorage.getItem(`${KEYS.CHAT_HISTORY}${scenarioId}`);
+  // --- Chat History (Per User & Scenario) ---
+  getChatHistory: (userId: string, scenarioId: string): ChatMessage[] | null => {
+    const stored = localStorage.getItem(`${KEYS.CHAT_HISTORY}${userId}_${scenarioId}`);
     return stored ? JSON.parse(stored) : null;
   },
 
-  saveChatHistory: (scenarioId: string, messages: ChatMessage[]) => {
-    localStorage.setItem(`${KEYS.CHAT_HISTORY}${scenarioId}`, JSON.stringify(messages));
+  saveChatHistory: (userId: string, scenarioId: string, messages: ChatMessage[]) => {
+    localStorage.setItem(`${KEYS.CHAT_HISTORY}${userId}_${scenarioId}`, JSON.stringify(messages));
   },
 
-  clearChatHistory: (scenarioId: string) => {
-    localStorage.removeItem(`${KEYS.CHAT_HISTORY}${scenarioId}`);
+  clearChatHistory: (userId: string, scenarioId: string) => {
+    localStorage.removeItem(`${KEYS.CHAT_HISTORY}${userId}_${scenarioId}`);
   },
 
-  // --- Scenario Progress ---
-  getScenarioProgress: (scenarioId: string): number => {
-    const stored = localStorage.getItem(`${KEYS.SCENARIO_PROGRESS}${scenarioId}`);
+  // --- Scenario Progress (Per User) ---
+  getScenarioProgress: (userId: string, scenarioId: string): number => {
+    const stored = localStorage.getItem(`${KEYS.SCENARIO_PROGRESS}${userId}_${scenarioId}`);
     if (stored) return parseInt(stored, 10);
     // Fallback to constants if not found locally
     const constantScenario = SCENARIOS.find(s => s.id === scenarioId);
     return constantScenario ? constantScenario.progress : 0;
   },
 
-  saveScenarioProgress: (scenarioId: string, progress: number) => {
-    localStorage.setItem(`${KEYS.SCENARIO_PROGRESS}${scenarioId}`, progress.toString());
+  saveScenarioProgress: (userId: string, scenarioId: string, progress: number) => {
+    localStorage.setItem(`${KEYS.SCENARIO_PROGRESS}${userId}_${scenarioId}`, progress.toString());
   },
 
   // --- Helpers ---
   resetAll: () => {
     localStorage.clear();
+    sessionStorage.clear();
   }
 };
