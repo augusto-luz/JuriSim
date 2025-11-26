@@ -30,6 +30,21 @@ const getMockParticipants = (userRole: CourtRole): Participant[] => {
   return allPossible.filter(p => p.role !== userRole);
 };
 
+// Extracted to prevent re-renders
+const RemoteVideo = React.memo(({ stream, isVideoOff }: { stream?: MediaStream, isVideoOff: boolean }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  
+  useEffect(() => {
+     if (videoRef.current && stream) {
+         videoRef.current.srcObject = stream;
+     }
+  }, [stream]);
+
+  if (!stream || isVideoOff) return <div className="absolute inset-0 bg-slate-800 flex items-center justify-center"><UserIcon size={40} className="text-slate-600"/></div>;
+
+  return <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"/>;
+});
+
 export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, currentUserRole, roomId = 'abc-def-ghi', user, isHost = false }) => {
   const hasJudgePower = currentUserRole === CourtRole.JUDGE || user.role === UserRole.ADMIN;
 
@@ -46,7 +61,6 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
   const [participants, setParticipants] = useState<Participant[]>(() => getMockParticipants(currentUserRole));
   
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  // Ref to hold the stream for cleanup purposes, ensuring access to the latest stream instance
   const localStreamRef = useRef<MediaStream | null>(null);
 
   const [isMuted, setIsMuted] = useState(false);
@@ -77,6 +91,28 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
   const broadcastIntervalRef = useRef<number | null>(null);
 
   const [isInWaitingRoom, setIsInWaitingRoom] = useState(currentUserRole === CourtRole.WITNESS);
+
+  const stopLocalMedia = () => {
+    if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(track => {
+            track.stop();
+        });
+        localStreamRef.current = null;
+    }
+    if (audioContextRef.current) {
+        audioContextRef.current.close().catch(() => {});
+        audioContextRef.current = null;
+    }
+    if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+    }
+  };
+
+  const handleExit = () => {
+      stopLocalMedia();
+      roomSignaling.disconnect();
+      onExit();
+  };
 
   // --- MEDIA INITIALIZATION ---
   useEffect(() => {
@@ -159,17 +195,11 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
     return () => {
       mounted = false;
       window.removeEventListener('click', handleUserInteraction);
-      roomSignaling.disconnect(); // Disconnect PeerJS on unmount
-      
-      // Stop all tracks from the ref to ensure we catch the current stream
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(track => track.stop());
-      }
-      
-      if (audioContextRef.current) audioContextRef.current.close();
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      // We rely on handleExit for main cleanup, but use cleanup here for strict mode double-invoke safety
+      stopLocalMedia();
+      roomSignaling.disconnect(); 
     };
-  }, [isInWaitingRoom, hearingStatus]); // Dependency array
+  }, [isInWaitingRoom, hearingStatus]);
 
 
   // --- SIGNALING LISTENERS ---
@@ -191,7 +221,7 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
         if (!event.payload.targetId || event.payload.targetId === localUser.id) {
            if (!isMuted) {
              setIsMuted(true);
-             if (localStream) localStream?.getAudioTracks().forEach(t => t.enabled = false);
+             if (localStreamRef.current) localStreamRef.current.getAudioTracks().forEach(t => t.enabled = false);
              setTimeout(() => roomSignaling.sendUpdate({ ...localUser, isMuted: true, isVideoOff, isHandRaised }), 100);
            }
         }
@@ -233,7 +263,7 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
         else if (event.type === 'LEAVE') {
            if (event.payload.id === localUser.id) {
               alert("Você foi removido da sala pelo Juiz.");
-              onExit();
+              handleExit();
               return prev; 
            }
            updated = updated.filter(p => p.id !== event.payload.id);
@@ -271,16 +301,16 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
   }, [hearingStatus, sessionStartTime]);
 
   const toggleMute = () => {
-    if (localStream) {
-      localStream.getAudioTracks().forEach(t => t.enabled = !t.enabled);
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach(t => t.enabled = !t.enabled);
       setIsMuted(!isMuted);
       roomSignaling.sendUpdate({ ...localUser, isMuted: !isMuted, isVideoOff, isHandRaised });
     }
   };
 
   const toggleVideo = () => {
-    if (localStream) {
-      localStream.getVideoTracks().forEach(t => t.enabled = !t.enabled);
+    if (localStreamRef.current) {
+      localStreamRef.current.getVideoTracks().forEach(t => t.enabled = !t.enabled);
       setIsVideoOff(!isVideoOff);
       roomSignaling.sendUpdate({ ...localUser, isMuted, isVideoOff: !isVideoOff, isHandRaised });
     }
@@ -332,25 +362,11 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
     }
   };
 
-  // Helper for rendering remote video
-  const RemoteVideo = ({ stream, isVideoOff }: { stream?: MediaStream, isVideoOff: boolean }) => {
-     const videoRef = useRef<HTMLVideoElement>(null);
-     useEffect(() => {
-        if (videoRef.current && stream) {
-            videoRef.current.srcObject = stream;
-        }
-     }, [stream]);
-
-     if (!stream || isVideoOff) return <div className="absolute inset-0 bg-slate-800 flex items-center justify-center"><UserIcon size={40} className="text-slate-600"/></div>;
-
-     return <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"/>;
-  };
-
   const pinnedParticipant = participants.find(p => p.isPinned);
 
   // --- RENDER ---
   if (isInWaitingRoom) return <div className="h-full bg-slate-900 flex flex-col items-center justify-center text-white"><div className="bg-black/50 p-10 rounded-2xl border border-white/10 text-center"><Shield size={48} className="text-legal-400 mx-auto mb-6" /><h2 className="text-3xl font-serif font-bold mb-2">Sala de Espera</h2><p className="text-gray-300">Aguardando autorização...</p></div></div>;
-  if (hearingStatus === 'ended') return <div className="h-full bg-slate-950 flex items-center justify-center text-white"><div className="text-center"><h2 className="text-4xl font-bold">Audiência Encerrada</h2><button onClick={onExit} className="mt-8 px-8 py-3 bg-white text-slate-900 rounded font-bold">Sair</button></div></div>;
+  if (hearingStatus === 'ended') return <div className="h-full bg-slate-950 flex items-center justify-center text-white"><div className="text-center"><h2 className="text-4xl font-bold">Audiência Encerrada</h2><button onClick={handleExit} className="mt-8 px-8 py-3 bg-white text-slate-900 rounded font-bold">Sair</button></div></div>;
 
   return (
     <div className="flex flex-col h-full bg-slate-950 text-white overflow-hidden relative">
@@ -454,7 +470,7 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
           <button onClick={toggleVideo} className={`p-4 rounded-full transition ${!isVideoOff ? 'bg-slate-700 hover:bg-slate-600' : 'bg-red-500/20 text-red-500 border border-red-500/50'}`}>{!isVideoOff ? <VideoIcon size={24}/> : <VideoOff size={24}/>}</button>
           <button onClick={toggleHand} className={`p-4 rounded-full transition ${isHandRaised ? 'bg-amber-900/50 text-amber-500 border border-amber-500' : 'bg-slate-700 hover:bg-slate-600'}`}><Hand size={24}/></button>
           <div className="w-px h-10 bg-slate-700 mx-2"/>
-          <button onClick={onExit} className="p-4 rounded-2xl bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/20"><PhoneOff size={24}/></button>
+          <button onClick={handleExit} className="p-4 rounded-2xl bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/20"><PhoneOff size={24}/></button>
       </div>
     </div>
   );
