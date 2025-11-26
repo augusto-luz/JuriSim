@@ -207,10 +207,12 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
     const startCamera = async () => {
       try {
         setMediaError(null);
-        const stream = await navigator.mediaDevices.getUserMedia({ 
+        // Typescript safe access
+        const constraints = { 
           video: { width: { ideal: 640 }, height: { ideal: 480 } }, 
           audio: { echoCancellation: true, noiseSuppression: true } 
-        });
+        };
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         
         if (!mounted) {
           stream.getTracks().forEach(track => track.stop());
@@ -259,7 +261,7 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
 
       } catch (err: any) {
         console.error("Media Error:", err);
-        if (mounted) setMediaError(err.name === 'NotAllowedError' ? "Acesso negado à câmera." : "Câmera não encontrada.");
+        if (mounted) setMediaError("Câmera/Microfone indisponível.");
       }
     };
 
@@ -330,8 +332,6 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
 
   const kickParticipant = (id: string) => {
     if(confirm("Remover participante?")) {
-      // Logic for MVP: Local removal + broadcast. 
-      // The peer receiving 'LEAVE' with their ID will trigger their own exit.
       setParticipants(prev => prev.filter(p => p.id !== id));
       roomSignaling.broadcast({ type: 'LEAVE', payload: { id } }); 
     }

@@ -4,6 +4,7 @@ import { ChatMessage } from "../types";
 let aiClient: GoogleGenAI | null = null;
 
 export const initializeGemini = (apiKey: string) => {
+  if (!apiKey) return;
   aiClient = new GoogleGenAI({ apiKey });
 };
 
@@ -32,6 +33,6 @@ export const generateCharacterResponse = async (
     return response.text || "(Sem resposta)";
   } catch (error) {
     console.error("Gemini Error:", error);
-    return "Erro ao gerar resposta da IA. Verifique sua chave API.";
+    return "Erro ao gerar resposta da IA. Verifique sua chave API ou tente novamente.";
   }
 };
