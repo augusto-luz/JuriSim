@@ -29,15 +29,7 @@ class RoomSignalingService {
   }
 
   async connect(roomId: string, user: Participant, isHost: boolean, stream: MediaStream | null) {
-    // If already connected to this room, update stream and return
-    if (this.peer && !this.peer.destroyed && this.roomId === roomId) {
-        this.localStream = stream;
-        this.localParticipantInfo = user;
-        // Re-broadcast join for good measure in case of refresh
-        this.sendUpdate(user);
-        return;
-    }
-
+    // Aggressive cleanup before connecting to ensure no stale state
     this.disconnect();
     
     this.roomId = roomId;
@@ -46,68 +38,75 @@ class RoomSignalingService {
     this.localParticipantInfo = user;
     this.currentParticipants.clear();
 
-    // Host takes a specific ID, Guests take random IDs
-    // Clean ID to avoid URL safe characters issues
     const cleanRoomId = roomId.replace(/[^a-zA-Z0-9-]/g, '');
     const myPeerId = isHost ? `jurisim-room-${cleanRoomId}` : undefined;
     
-    // Initialize Peer
-    this.peer = new Peer(myPeerId, {
-      debug: 1,
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:global.stun.twilio.com:3478' }
-        ]
-      }
-    });
+    console.log(`[Signaling] Connecting as ${isHost ? 'HOST' : 'GUEST'}...`);
 
-    this.peer.on('open', (id) => {
-      console.log(`[PeerJS] Connected with ID: ${id}`);
-      
-      // If I am Guest, I MUST connect to the Host first to get into the room
-      if (!isHost) {
-        this.connectToHost(`jurisim-room-${cleanRoomId}`, user);
-      } else {
-        // If I am Host, I add myself to my list
-        if (this.localParticipantInfo) {
-             this.currentParticipants.set(id, { ...this.localParticipantInfo, id });
-        }
-      }
-    });
+    // Initialize Peer with a small delay to ensure previous cleanup finished
+    setTimeout(() => {
+        this.peer = new Peer(myPeerId, {
+          debug: 1,
+          config: {
+            iceServers: [
+              { urls: 'stun:stun.l.google.com:19302' },
+              { urls: 'stun:global.stun.twilio.com:3478' }
+            ]
+          }
+        });
 
-    this.peer.on('connection', (conn) => {
-      this.handleDataConnection(conn);
-    });
+        this.peer.on('open', (id) => {
+          console.log(`[PeerJS] Connected with ID: ${id}`);
+          
+          if (!isHost) {
+            this.connectToHost(`jurisim-room-${cleanRoomId}`, user);
+          } else {
+            // Host adds themselves to the registry
+            if (this.localParticipantInfo) {
+                 this.currentParticipants.set(id, { ...this.localParticipantInfo, id });
+            }
+          }
+        });
 
-    this.peer.on('call', (call) => {
-      this.handleIncomingCall(call);
-    });
+        this.peer.on('connection', (conn) => {
+          this.handleDataConnection(conn);
+        });
 
-    this.peer.on('error', (err) => {
-      console.error('[PeerJS Error]', err);
-      if (err.type === 'unavailable-id' && isHost) {
-        alert("Esta sala já está aberta por outro anfitrião. Você entrará como convidado.");
-        // Fallback logic could go here, but reload is safer for MVP
-        window.location.reload();
-      }
-      if (err.type === 'peer-unavailable' && !isHost) {
-         // Retry logic or alert
-         console.warn("Host not found. Retrying...");
-      }
-    });
+        this.peer.on('call', (call) => {
+          this.handleIncomingCall(call);
+        });
+
+        this.peer.on('error', (err: any) => {
+          console.error('[PeerJS Error]', err);
+          if (err.type === 'unavailable-id' && isHost) {
+            alert("Sessão antiga ainda ativa. Recarregando...");
+            window.location.reload();
+          }
+          if (err.type === 'peer-unavailable') {
+             // Clean up if we tried to connect to a dead peer
+             const deadPeerId = err.message.replace('Could not connect to peer ', '');
+             if (deadPeerId && !isHost) {
+                 console.warn(`Peer ${deadPeerId} unavailable, retrying host...`);
+                 setTimeout(() => this.connectToHost(`jurisim-room-${cleanRoomId}`, user), 2000);
+             } else if (deadPeerId) {
+                 // Remove dead peer from list
+                 this.currentParticipants.delete(deadPeerId);
+                 this.notifyListeners({ type: 'LEAVE', payload: { id: deadPeerId } });
+             }
+          }
+        });
+    }, 100);
   }
 
   private connectToHost(hostId: string, user: Participant) {
-    if (!this.peer) return;
+    if (!this.peer || this.peer.destroyed) return;
     
-    // Data Connection
+    console.log(`[Signaling] Connecting to Host: ${hostId}`);
     const conn = this.peer.connect(hostId, { metadata: user, reliable: true });
     
     conn.on('open', () => {
       this.connections.set(hostId, conn);
       
-      // Send JOIN immediately with my real ID
       const joinPayload = { ...user, id: this.peer?.id || '' };
       conn.send({ type: 'JOIN', payload: joinPayload });
     });
@@ -117,9 +116,7 @@ class RoomSignalingService {
     });
     
     conn.on('close', () => {
-      if (!this.isHost) {
-        alert("A conexão com o Anfitrião foi perdida.");
-      }
+      console.warn("Host disconnected");
     });
     
     conn.on('error', (err) => console.error("Host Connection Error", err));
@@ -129,15 +126,14 @@ class RoomSignalingService {
     conn.on('open', () => {
       this.connections.set(conn.peer, conn);
       
-      // If I am Host, I am the source of truth.
       if (this.isHost) {
-         // 1. Send SYNC_USERS to the new guy
-         // Convert Map to Array
+         // Send existing users list to the new joiner
          const others = Array.from(this.currentParticipants.values());
          conn.send({ type: 'SYNC_USERS', payload: others });
 
-         // 2. Initiate Call (Mesh)
+         // Host initiates call to the new user immediately
          if (this.localStream) {
+             console.log(`[Host] Calling new user ${conn.peer}`);
              const call = this.peer!.call(conn.peer, this.localStream);
              this.setupMediaCall(call);
          }
@@ -147,7 +143,7 @@ class RoomSignalingService {
     conn.on('data', (data: any) => {
       this.handleMessage(data);
       
-      // If Host, relay to everyone else (Star topology for data)
+      // Host acts as a relay server for data
       if (this.isHost) {
         this.broadcastExcept(data, conn.peer);
       }
@@ -166,23 +162,30 @@ class RoomSignalingService {
   // --- Media Handling (WebRTC) ---
 
   private handleIncomingCall(call: MediaConnection) {
-    // Always answer calls. The UI decides whether to show the video.
-    // This ensures waiting room users still establish the pipeline.
+    console.log(`[Media] Incoming call from ${call.peer}`);
+    
+    // Always answer to establish the P2P link
     call.answer(this.localStream || undefined);
     this.setupMediaCall(call);
   }
 
   private setupMediaCall(call: MediaConnection) {
+    this.mediaConnections.set(call.peer, call);
+
     call.on('stream', (remoteStream) => {
-       // Trigger internal update to attach stream
+       console.log(`[Media] Received stream from ${call.peer}`);
        this.notifyListeners({
          type: 'UPDATE',
          payload: { id: call.peer, stream: remoteStream } as any
        });
     });
     
+    call.on('close', () => {
+        console.log(`[Media] Call closed with ${call.peer}`);
+        this.mediaConnections.delete(call.peer);
+    });
+
     call.on('error', (err) => console.error("Media Call Error", err));
-    this.mediaConnections.set(call.peer, call);
   }
 
   // --- Messaging ---
@@ -191,29 +194,25 @@ class RoomSignalingService {
     if (event.type === 'JOIN') {
         this.currentParticipants.set(event.payload.id, event.payload);
         
-        // MESH NETWORK LOGIC:
-        // If I am a Guest, and I see another Guest join, I should try to connect/call them
-        // But to simplify bandwidth in this MVP, we let the Host initiate calls, 
-        // OR we rely on the Host relaying the JOIN, and then we initiate the call.
-        
-        if (!this.isHost && event.payload.id !== this.peer?.id) {
-            // Establish direct media connection
-            if (this.localStream) {
-                // Check if already calling
-                if (!this.mediaConnections.has(event.payload.id)) {
-                    console.log(`[Mesh] Initiating call to ${event.payload.name}`);
-                    const call = this.peer!.call(event.payload.id, this.localStream);
-                    this.setupMediaCall(call);
-                }
+        // MESH NETWORKING:
+        // If I see someone joined, and I am NOT the host, and I am NOT the one who joined,
+        // I should check if I need to initiate a call to them (Mesh).
+        if (!this.isHost && event.payload.id !== this.peer?.id && this.localStream) {
+            // Check if not already connected
+            if (!this.mediaConnections.has(event.payload.id)) {
+                console.log(`[Mesh] Initiating P2P call to ${event.payload.id}`);
+                const call = this.peer!.call(event.payload.id, this.localStream);
+                this.setupMediaCall(call);
             }
         }
     }
     else if (event.type === 'SYNC_USERS') {
-        // Received list of users.
         event.payload.forEach(p => {
              this.currentParticipants.set(p.id, p);
-             // Try to call them if not connected
+             
+             // Aggressively connect to everyone in the list
              if (p.id !== this.peer?.id && !this.mediaConnections.has(p.id) && this.localStream) {
+                 console.log(`[Mesh Sync] Calling existing peer ${p.id}`);
                  const call = this.peer!.call(p.id, this.localStream);
                  this.setupMediaCall(call);
              }
@@ -222,6 +221,7 @@ class RoomSignalingService {
     else if (event.type === 'UPDATE') {
         if (this.currentParticipants.has(event.payload.id)) {
             const p = this.currentParticipants.get(event.payload.id)!;
+            // Merge but DON'T overwrite stream with undefined if payload doesn't have it
             this.currentParticipants.set(event.payload.id, { ...p, ...event.payload });
         }
     }
@@ -248,7 +248,6 @@ class RoomSignalingService {
   // --- Public API ---
 
   broadcast(event: SignalingEvent) {
-    // If I am Host, update my local registry
     if (this.isHost) {
         if (event.type === 'UPDATE') {
              if (this.currentParticipants.has(event.payload.id)) {
@@ -258,20 +257,15 @@ class RoomSignalingService {
         }
         this.connections.forEach(conn => conn.open && conn.send(event));
     } else {
-      // Guest sends to Host, Host broadcasts
-      // Clean room ID logic
       const cleanRoomId = this.roomId.replace(/[^a-zA-Z0-9-]/g, '');
       const hostConn = this.connections.get(`jurisim-room-${cleanRoomId}`);
       if (hostConn && hostConn.open) {
           hostConn.send(event);
-      } else {
-          console.warn("Cannot broadcast: Not connected to host");
       }
     }
   }
 
   sendUpdate(participant: Participant) {
-    // Override ID with PeerID just in case
     if (this.peer) {
         this.broadcast({
             type: 'UPDATE',
@@ -282,8 +276,6 @@ class RoomSignalingService {
 
   sendAudioLevel(id: string, level: number) {
      if (this.peer) {
-        // Audio level is high frequency, so we send it fire-and-forget
-        // Optimizing: only send if significant change? For now, raw.
         this.broadcast({ type: 'AUDIO_LEVEL', payload: { id: this.peer.id, level } });
      }
   }
@@ -297,11 +289,18 @@ class RoomSignalingService {
   }
 
   disconnect() {
-    this.peer?.destroy();
+    console.log("[Signaling] Disconnecting...");
+    if (this.peer) {
+        this.peer.removeAllListeners();
+        this.peer.destroy();
+        this.peer = null;
+    }
+    this.connections.forEach(conn => conn.close());
     this.connections.clear();
+    this.mediaConnections.forEach(mc => mc.close());
     this.mediaConnections.clear();
     this.currentParticipants.clear();
-    this.peer = null;
+    this.listeners = [];
   }
 
   subscribe(callback: (event: SignalingEvent) => void) {
