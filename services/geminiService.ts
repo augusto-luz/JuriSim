@@ -5,7 +5,11 @@ let aiClient: GoogleGenAI | null = null;
 
 export const initializeGemini = (apiKey: string) => {
   if (!apiKey) return;
-  aiClient = new GoogleGenAI({ apiKey });
+  try {
+    aiClient = new GoogleGenAI({ apiKey });
+  } catch (e) {
+    console.error("Failed to initialize Gemini Client", e);
+  }
 };
 
 export const generateCharacterResponse = async (

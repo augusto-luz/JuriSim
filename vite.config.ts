@@ -9,7 +9,16 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
-    // Prevents the build from failing if the bundle size is large
-    chunkSizeWarningLimit: 1600,
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          charts: ['recharts'],
+          icons: ['lucide-react'],
+          ai: ['@google/genai']
+        }
+      }
+    }
   }
 });

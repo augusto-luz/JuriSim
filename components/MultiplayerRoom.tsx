@@ -106,13 +106,19 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
       if (event.type === 'MUTE_FORCE') {
         // If targetId is provided and matches mine, OR no targetId (all), mute me.
         if (!event.payload.targetId || event.payload.targetId === localUser.id) {
-           if (!isMuted && localStream) {
-               localStream.getAudioTracks().forEach(t => t.enabled = false);
-               setIsMuted(true);
-               // Notify others I am now muted
-               setTimeout(() => {
-                 roomSignaling.sendUpdate({ ...localUser, isMuted: true, isVideoOff, isHandRaised, status: 'active' });
-               }, 100);
+           if (!isMuted) {
+             setIsMuted(true);
+             // Stop tracks
+             setLocalStream(currentStream => {
+                 if (currentStream) {
+                     currentStream.getAudioTracks().forEach(t => t.enabled = false);
+                 }
+                 return currentStream;
+             });
+             // Notify others
+             setTimeout(() => {
+                roomSignaling.sendUpdate({ ...localUser, isMuted: true, isVideoOff, isHandRaised, status: 'active' });
+             }, 100);
            }
         }
       }
@@ -122,13 +128,11 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
 
         if (event.type === 'JOIN') {
           // IMPORTANT: If a real user joins, remove any mock that holds the same role
-          // Logic: Remove mock if it has same role as new user
           updated = updated.filter(p => !(p.role === event.payload.role && p.id.startsWith('mock-')));
           
           // Add new user if not exists
           if (!updated.find(p => p.id === event.payload.id)) {
             // Also reply with my own existence so they know I'm here
-            // But verify we don't spam updates unnecessarily
             roomSignaling.broadcast({ 
               type: 'UPDATE', 
               payload: { ...localUser, id: localUser.id, isMuted, isVideoOff, isHandRaised } 
@@ -145,7 +149,7 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
         else if (event.type === 'UPDATE') {
            updated = updated.map(p => p.id === event.payload.id ? { ...p, ...event.payload } : p);
            
-           // Aggressive Mock Cleanup: If update comes from a real user, ensure no mock exists for that role
+           // Aggressive Mock Cleanup
            if (!event.payload.id.startsWith('mock-')) {
               updated = updated.filter(p => !(p.role === event.payload.role && p.id.startsWith('mock-')));
            }
@@ -171,6 +175,9 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
 
     // 3. Broadcast Audio Level Interval
     broadcastIntervalRef.current = window.setInterval(() => {
+      // Use ref-like logic or closure to get current mute state? 
+      // Actually relies on state closure. Ideally we use a Ref for isMuted to be perfect, 
+      // but interval clears on change of isMuted, so it's fine.
       if (!isMuted) {
         roomSignaling.sendAudioLevel(localUser.id, localAudioLevel);
       }
@@ -207,7 +214,6 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
     const startCamera = async () => {
       try {
         setMediaError(null);
-        // Typescript safe access
         const constraints = { 
           video: { width: { ideal: 640 }, height: { ideal: 480 } }, 
           audio: { echoCancellation: true, noiseSuppression: true } 
@@ -250,7 +256,7 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
             let sum = 0;
             for(let i = 0; i < dataArray.length; i++) sum += dataArray[i];
             const average = sum / dataArray.length;
-            const level = Math.min(100, Math.max(0, average * 3)); // Sensitivity boost
+            const level = Math.min(100, Math.max(0, average * 3)); 
             
             setLocalAudioLevel(level);
             
@@ -261,7 +267,7 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
 
       } catch (err: any) {
         console.error("Media Error:", err);
-        if (mounted) setMediaError("Câmera/Microfone indisponível.");
+        if (mounted) setMediaError("Câmera/Microfone indisponível ou bloqueado.");
       }
     };
 
@@ -287,11 +293,10 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
     };
   }, [isInWaitingRoom, hearingStatus]);
 
-  // Mock Audio Fluctuation (Only for mock participants)
+  // Mock Audio Fluctuation
   useEffect(() => {
     mockAudioIntervalRef.current = window.setInterval(() => {
       setParticipants(prev => prev.map(p => {
-        // Only simulate for bots
         if (!p.id.startsWith('mock-') || p.isMuted) return p;
         const isActive = Math.random() > 0.6;
         return { ...p, audioLevel: isActive ? Math.random() * 50 + 10 : 0 };
@@ -339,10 +344,8 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
 
   const muteAll = () => {
       if(confirm("Deseja silenciar todos os microfones?")) {
-          // Send signal to FORCE mute others
           roomSignaling.forceMuteAll();
-          
-          // Also mute local mocks
+          // Mute local mocks
           setParticipants(prev => prev.map(p => ({...p, isMuted: true})));
       }
   };
@@ -381,7 +384,6 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
                <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></span>
                Em espera
             </div>
-            {/* Admin Override for Waiting Room */}
             {user.role === UserRole.ADMIN && (
                 <div className="mt-8 border-t border-white/10 pt-4">
                     <p className="text-xs text-amber-500 font-bold mb-2"><ShieldCheck size={12} className="inline"/> Acesso Administrativo</p>
@@ -477,7 +479,7 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
       </div>
 
       <div className="flex flex-1 overflow-hidden relative">
-        {/* Waiting Overlay for Participants */}
+        {/* Waiting Overlay */}
         {hearingStatus === 'waiting' && !hasJudgePower && (
            <div className="absolute inset-0 z-30 bg-black/40 backdrop-blur-sm flex items-center justify-center">
               <div className="bg-slate-900 p-8 rounded-xl border border-slate-700 text-center max-w-md shadow-2xl">
@@ -547,7 +549,7 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
            </div>
         </div>
 
-        {/* Judge Sidebar (Drawer on Mobile) */}
+        {/* Judge Sidebar */}
         {(hasJudgePower && (isJudgeDrawerOpen || window.innerWidth >= 768)) && (
            <div className={`fixed inset-y-0 right-0 w-72 bg-slate-900 border-l border-slate-800 z-40 transform transition-transform duration-300 md:static md:translate-x-0 ${isJudgeDrawerOpen ? 'translate-x-0' : 'translate-x-full'}`}>
               <div className="p-4 border-b border-slate-800 flex justify-between items-center">
