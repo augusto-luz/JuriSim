@@ -50,4 +50,5 @@ export interface Participant {
   isPinned?: boolean;
   audioLevel?: number;
   status: 'waiting' | 'active' | 'disconnected' | 'kicked';
+  stream?: MediaStream; // Added for WebRTC
 }

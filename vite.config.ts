@@ -10,14 +10,15 @@ export default defineConfig({
     target: 'esnext',
     outDir: 'dist',
     sourcemap: false,
-    chunkSizeWarningLimit: 1500,
+    chunkSizeWarningLimit: 2000,
     rollupOptions: {
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom'],
           charts: ['recharts'],
           icons: ['lucide-react'],
-          ai: ['@google/genai']
+          ai: ['@google/genai'],
+          webrtc: ['peerjs']
         }
       }
     }

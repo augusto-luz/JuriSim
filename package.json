@@ -1,14 +1,14 @@
 {
   "name": "jurisim-platform",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "engines": {
     "node": ">=18.0.0"
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -17,7 +17,8 @@
     "react-dom": "^18.3.1",
     "lucide-react": "^0.344.0",
     "recharts": "^2.12.2",
-    "@google/genai": "latest"
+    "@google/genai": "latest",
+    "peerjs": "^1.5.2"
   },
   "devDependencies": {
     "@types/react": "^18.2.64",

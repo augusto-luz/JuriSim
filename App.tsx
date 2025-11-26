@@ -23,9 +23,14 @@ const App: React.FC = () => {
   const [activeRoomId, setActiveRoomId] = useState<string>('');
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [showRoleSelection, setShowRoleSelection] = useState(false);
+  const [isHost, setIsHost] = useState(false);
 
   // Check for existing session on mount
   useEffect(() => {
+    // Check if URL has room param
+    const params = new URLSearchParams(window.location.search);
+    const roomParam = params.get('room');
+    
     const session = persistenceService.restoreSession();
     if (session) {
       setApiKey(session.apiKey);
@@ -33,6 +38,16 @@ const App: React.FC = () => {
       if (session.apiKey) initializeGemini(session.apiKey);
       setIsAuthenticated(true);
     }
+    
+    if (roomParam) {
+        // If accessed via link, auto-join flow
+        setJoinCodeInput(roomParam);
+        setActiveRoomId(roomParam);
+        setIsHost(false); // Link joiners are guests
+        setShowRoleSelection(true);
+        setCurrentView('multiplayer');
+    }
+
     setIsLoadingSession(false);
   }, []);
 
@@ -41,7 +56,6 @@ const App: React.FC = () => {
     setUser(loggedUser);
     if (key) initializeGemini(key);
     setIsAuthenticated(true);
-    // Persist session depending on user choice
     persistenceService.saveSession(key, loggedUser, rememberMe);
   };
 
@@ -54,7 +68,6 @@ const App: React.FC = () => {
   };
 
   const startScenario = (id: string) => {
-    // Block scenario start if no API Key (double check)
     if (!apiKey) {
       alert("Para iniciar uma Simulação com IA, você precisa configurar uma Chave API nas Configurações ou no Login.");
       return;
@@ -63,7 +76,6 @@ const App: React.FC = () => {
     setCurrentView('simulation_active');
   };
 
-  // Generate a Google Meet style code (e.g., abc-defg-hij)
   const generateRoomCode = () => {
     const segment = () => Math.random().toString(36).substring(2, 5);
     return `${segment()}-${segment()}-${segment()}`;
@@ -72,12 +84,14 @@ const App: React.FC = () => {
   const handleStartNewMeeting = () => {
     const newCode = generateRoomCode();
     setActiveRoomId(newCode);
+    setIsHost(true); // Creator is Host
     setShowRoleSelection(true);
   };
 
   const handleJoinMeeting = () => {
     if (joinCodeInput.trim().length >= 5) {
       setActiveRoomId(joinCodeInput);
+      setIsHost(false); // Joiner is Guest
       setShowRoleSelection(true);
     }
   };
@@ -102,7 +116,6 @@ const App: React.FC = () => {
     </button>
   );
 
-  // Render Logic based on View State
   const renderContent = () => {
     if (currentView === 'simulation_active' && activeScenarioId) {
       const scenario = SCENARIOS.find(s => s.id === activeScenarioId)!;
@@ -123,15 +136,19 @@ const App: React.FC = () => {
             setMultiplayerRole(null);
             setShowRoleSelection(false);
             setCurrentView('dashboard');
+            // Clear URL param on exit
+            const url = new URL(window.location.href);
+            url.searchParams.delete('room');
+            window.history.replaceState({}, '', url);
           }}
           currentUserRole={multiplayerRole}
           roomId={activeRoomId}
           user={user}
+          isHost={isHost}
         />
       );
     }
 
-    // Role Selection Screen for Multiplayer
     if (currentView === 'multiplayer' && showRoleSelection) {
       return (
         <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -139,7 +156,7 @@ const App: React.FC = () => {
             <div>
               <div className="flex items-center gap-2 text-legal-600 text-sm font-medium mb-1">
                  <Video size={16} />
-                 <span>Sala: {activeRoomId}</span>
+                 <span>Sala: {activeRoomId} {isHost ? '(Anfitrião)' : '(Convidado)'}</span>
               </div>
               <h2 className="text-2xl md:text-3xl font-serif font-bold text-legal-900">Escolha seu Papel</h2>
               <p className="text-gray-500">Selecione qual cadeira você irá ocupar nesta audiência.</p>
@@ -153,86 +170,30 @@ const App: React.FC = () => {
           </div>
           
           <div className="space-y-8 pb-10">
-            {/* The Bench */}
+            {/* Sections unchanged... */}
             <section>
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <Gavel size={14} /> Magistratura e Serventia
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <RoleCard 
-                  role={CourtRole.JUDGE} 
-                  title="Juiz de Direito" 
-                  desc="Preside a audiência, mantém a ordem e profere a sentença." 
-                  icon={Gavel}
-                  colorClass="bg-legal-100 text-legal-800"
-                />
-                <RoleCard 
-                  role={CourtRole.CLERK} 
-                  title="Escrivão" 
-                  desc="Registra os atos da audiência e auxilia o juiz." 
-                  icon={ScrollText}
-                  colorClass="bg-slate-100 text-slate-800"
-                />
+                <RoleCard role={CourtRole.JUDGE} title="Juiz de Direito" desc="Preside a audiência, mantém a ordem e profere a sentença." icon={Gavel} colorClass="bg-legal-100 text-legal-800" />
+                <RoleCard role={CourtRole.CLERK} title="Escrivão" desc="Registra os atos da audiência e auxilia o juiz." icon={ScrollText} colorClass="bg-slate-100 text-slate-800" />
               </div>
             </section>
-
-            {/* Counsel */}
             <section>
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                <Scale size={14} /> Advocacia e Ministério Público
-              </h3>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2"><Scale size={14} /> Advocacia e Ministério Público</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <RoleCard 
-                  role={CourtRole.PROSECUTOR} 
-                  title="Promotor / M.P." 
-                  desc="Fiscal da lei ou representante da acusação." 
-                  icon={Shield}
-                  colorClass="bg-red-100 text-red-800"
-                />
-                <RoleCard 
-                  role={CourtRole.DEFENSE} 
-                  title="Adv. de Defesa" 
-                  desc="Representa o réu/requerido e garante o contraditório." 
-                  icon={Shield}
-                  colorClass="bg-blue-100 text-blue-800"
-                />
-                <RoleCard 
-                  role={CourtRole.PLAINTIFF_COUNSEL} 
-                  title="Adv. do Autor" 
-                  desc="Representa a parte que iniciou o processo." 
-                  icon={Shield}
-                  colorClass="bg-cyan-100 text-cyan-800"
-                />
+                <RoleCard role={CourtRole.PROSECUTOR} title="Promotor / M.P." desc="Fiscal da lei ou representante da acusação." icon={Shield} colorClass="bg-red-100 text-red-800" />
+                <RoleCard role={CourtRole.DEFENSE} title="Adv. de Defesa" desc="Representa o réu/requerido e garante o contraditório." icon={Shield} colorClass="bg-blue-100 text-blue-800" />
+                <RoleCard role={CourtRole.PLAINTIFF_COUNSEL} title="Adv. do Autor" desc="Representa a parte que iniciou o processo." icon={Shield} colorClass="bg-cyan-100 text-cyan-800" />
               </div>
             </section>
-
-            {/* Parties */}
             <section>
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                <Users size={14} /> Partes e Outros
-              </h3>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2"><Users size={14} /> Partes e Outros</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                 <RoleCard 
-                  role={CourtRole.PLAINTIFF} 
-                  title="Autor / Vítima" 
-                  desc="Pessoa física ou jurídica que propõe a ação." 
-                  icon={User}
-                  colorClass="bg-green-100 text-green-800"
-                />
-                <RoleCard 
-                  role={CourtRole.DEFENDANT} 
-                  title="Réu / Acusado" 
-                  desc="Pessoa contra quem o processo é movido." 
-                  icon={User}
-                  colorClass="bg-orange-100 text-orange-800"
-                />
-                 <RoleCard 
-                  role={CourtRole.WITNESS} 
-                  title="Testemunha" 
-                  desc="Presta depoimento (Inicia na Sala de Espera)." 
-                  icon={User}
-                  colorClass="bg-amber-100 text-amber-800"
-                />
+                 <RoleCard role={CourtRole.PLAINTIFF} title="Autor / Vítima" desc="Pessoa física ou jurídica que propõe a ação." icon={User} colorClass="bg-green-100 text-green-800" />
+                <RoleCard role={CourtRole.DEFENDANT} title="Réu / Acusado" desc="Pessoa contra quem o processo é movido." icon={User} colorClass="bg-orange-100 text-orange-800" />
+                 <RoleCard role={CourtRole.WITNESS} title="Testemunha" desc="Presta depoimento (Inicia na Sala de Espera)." icon={User} colorClass="bg-amber-100 text-amber-800" />
               </div>
             </section>
           </div>
@@ -240,93 +201,39 @@ const App: React.FC = () => {
       );
     }
 
-    // Lobby Screen
     if (currentView === 'multiplayer') {
       const now = new Date();
       return (
         <div className="h-full flex flex-col md:flex-row p-6 md:p-12 gap-8 md:gap-16 items-center justify-center bg-white">
            <div className="max-w-md w-full space-y-8">
               <div className="space-y-4">
-                <h1 className="text-3xl md:text-5xl font-serif font-bold text-legal-900 leading-tight">
-                  Audiências virtuais e simulações premium.
-                </h1>
-                <p className="text-lg text-gray-500">
-                  A JuriSim conecta estudantes e profissionais. Participe de audiências ao vivo mesmo sem chave API.
-                </p>
-                {!apiKey && (
-                   <div className="flex items-start gap-3 bg-amber-50 p-4 rounded-lg border border-amber-100 text-sm text-amber-800">
-                      <AlertCircle size={20} className="shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-bold">Modo Convidado</p>
-                        <p>Você está logado sem chave API. A Simulação com IA está desativada, mas você pode usar o Multiplayer livremente.</p>
-                      </div>
-                   </div>
-                )}
+                <h1 className="text-3xl md:text-5xl font-serif font-bold text-legal-900 leading-tight">Audiências virtuais e simulações premium.</h1>
+                <p className="text-lg text-gray-500">A JuriSim conecta estudantes e profissionais. Participe de audiências ao vivo mesmo sem chave API.</p>
+                {!apiKey && <div className="flex items-start gap-3 bg-amber-50 p-4 rounded-lg border border-amber-100 text-sm text-amber-800"><AlertCircle size={20} className="shrink-0 mt-0.5" /><div><p className="font-bold">Modo Convidado</p><p>Você está logado sem chave API. A Simulação com IA está desativada.</p></div></div>}
               </div>
 
               <div className="flex flex-col sm:flex-row items-start gap-4">
-                 <button 
-                    onClick={handleStartNewMeeting}
-                    className="flex items-center gap-2 bg-legal-800 hover:bg-legal-700 text-white px-6 py-3 rounded-lg font-medium shadow-lg hover:shadow-xl transition transform active:scale-95"
-                 >
-                    <Plus size={20} />
-                    Nova Audiência
-                 </button>
-                 
+                 <button onClick={handleStartNewMeeting} className="flex items-center gap-2 bg-legal-800 hover:bg-legal-700 text-white px-6 py-3 rounded-lg font-medium shadow-lg hover:shadow-xl transition transform active:scale-95"><Plus size={20} /> Nova Audiência</button>
                  <div className="flex items-center gap-2 w-full sm:w-auto relative">
-                    <div className="absolute left-3 text-gray-400">
-                       <Keyboard size={18} />
-                    </div>
-                    <input 
-                      type="text" 
-                      placeholder="Código ou link"
-                      value={joinCodeInput}
-                      onChange={(e) => setJoinCodeInput(e.target.value)}
-                      className="w-full sm:w-64 pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-legal-500 focus:border-legal-500 outline-none text-gray-700"
-                    />
-                    <button 
-                       onClick={handleJoinMeeting}
-                       disabled={joinCodeInput.length < 3}
-                       className="text-legal-600 font-medium hover:bg-legal-50 px-4 py-3 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition"
-                    >
-                       Entrar
-                    </button>
+                    <div className="absolute left-3 text-gray-400"><Keyboard size={18} /></div>
+                    <input type="text" placeholder="Código ou link" value={joinCodeInput} onChange={(e) => setJoinCodeInput(e.target.value)} className="w-full sm:w-64 pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-legal-500 outline-none text-gray-700" />
+                    <button onClick={handleJoinMeeting} disabled={joinCodeInput.length < 3} className="text-legal-600 font-medium hover:bg-legal-50 px-4 py-3 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition">Entrar</button>
                  </div>
               </div>
            </div>
-
+           {/* Decorative Blob */}
            <div className="hidden md:flex flex-1 items-center justify-center relative w-full max-w-lg aspect-square">
                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-100 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-blob"></div>
                <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-100 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-blob animation-delay-2000"></div>
-               
                <div className="relative bg-white p-6 rounded-2xl shadow-2xl border border-gray-100 w-full">
                   <div className="aspect-video bg-legal-900 rounded-lg mb-4 flex items-center justify-center relative overflow-hidden group">
                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
                      <Gavel size={48} className="text-white/20 group-hover:text-white/40 transition duration-500" />
-                     <div className="absolute bottom-4 left-4 text-white">
-                        <div className="text-xs font-bold bg-red-600 px-2 py-0.5 rounded inline-block mb-1">AO VIVO</div>
-                        <p className="font-bold">Sala 001 - Instrução</p>
-                     </div>
+                     <div className="absolute bottom-4 left-4 text-white"><div className="text-xs font-bold bg-red-600 px-2 py-0.5 rounded inline-block mb-1">AO VIVO</div><p className="font-bold">Sala 001 - Instrução</p></div>
                   </div>
                   <div className="flex items-center justify-between">
-                     <div className="flex -space-x-3">
-                        {[1,2,3].map(i => (
-                           <div key={i} className="w-10 h-10 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-500">
-                              U{i}
-                           </div>
-                        ))}
-                        <div className="w-10 h-10 rounded-full border-2 border-white bg-legal-100 flex items-center justify-center text-xs font-bold text-legal-600">
-                           +12
-                        </div>
-                     </div>
-                     <div className="text-right">
-                        <p className="text-2xl font-light text-gray-900">
-                           {now.getHours()}:{now.getMinutes().toString().padStart(2, '0')}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                           {now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'short' })}
-                        </p>
-                     </div>
+                     <div className="flex -space-x-3">{[1,2,3].map(i => <div key={i} className="w-10 h-10 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-500">U{i}</div>)}<div className="w-10 h-10 rounded-full border-2 border-white bg-legal-100 flex items-center justify-center text-xs font-bold text-legal-600">+12</div></div>
+                     <div className="text-right"><p className="text-2xl font-light text-gray-900">{now.getHours()}:{now.getMinutes().toString().padStart(2, '0')}</p><p className="text-xs text-gray-500">{now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'short' })}</p></div>
                   </div>
                </div>
            </div>
@@ -338,42 +245,18 @@ const App: React.FC = () => {
       return <Dashboard onStartScenario={startScenario} user={user} />;
     }
     
-    // Default Dashboard
     return <Dashboard onStartScenario={startScenario} user={user} />;
   };
 
-  if (isLoadingSession) {
-    return (
-       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-legal-800"></div>
-       </div>
-    );
-  }
+  if (isLoadingSession) return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-legal-800"></div></div>;
 
-  if (!isAuthenticated) {
-    return <Auth onLogin={handleLogin} />;
-  }
+  if (!isAuthenticated) return <Auth onLogin={handleLogin} />;
 
-  // If in active simulation/multiplayer, render full screen without sidebar
   if (currentView === 'simulation_active' || currentView === 'multiplayer_active') {
-    return (
-      <div className="h-screen w-screen overflow-hidden">
-        {renderContent()}
-      </div>
-    );
+    return <div className="h-screen w-screen overflow-hidden">{renderContent()}</div>;
   }
 
-  return (
-    <Layout 
-      user={user} 
-      currentView={currentView} 
-      hasApiKey={!!apiKey}
-      onChangeView={setCurrentView}
-      onLogout={handleLogout}
-    >
-      {renderContent()}
-    </Layout>
-  );
+  return <Layout user={user} currentView={currentView} hasApiKey={!!apiKey} onChangeView={setCurrentView} onLogout={handleLogout}>{renderContent()}</Layout>;
 };
 
 export default App;
