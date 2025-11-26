@@ -424,15 +424,15 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
 
   return (
     <div className="flex flex-col h-full bg-slate-950 text-white overflow-hidden relative">
-      {showMeetingInfo && hearingStatus !== 'ended' && (
+      {showMeetingInfo && (
         <div className="absolute bottom-24 left-4 z-50 bg-white text-slate-900 p-6 rounded-xl shadow-2xl w-80 animate-in slide-in-from-bottom-5">
            <div className="flex justify-between mb-4">
               <h3 className="font-bold">Sala: {roomId}</h3>
               <button onClick={() => setShowMeetingInfo(false)}><X size={18} /></button>
            </div>
            <div className="bg-slate-100 p-3 rounded-lg flex justify-between items-center">
-              <span className="font-mono text-xs">{`jurisim.app/${roomId}`}</span>
-              <button onClick={() => { navigator.clipboard.writeText(`jurisim.app/${roomId}`); setIsCopied(true); setTimeout(()=>setIsCopied(false), 2000); }}>
+              <span className="font-mono text-xs">{`${window.location.host}?room=${roomId}`}</span>
+              <button onClick={() => { navigator.clipboard.writeText(`${window.location.protocol}//${window.location.host}?room=${roomId}`); setIsCopied(true); setTimeout(()=>setIsCopied(false), 2000); }}>
                  {isCopied ? <CheckCircle size={16} className="text-green-600"/> : <Copy size={16}/>}
               </button>
            </div>
@@ -568,9 +568,6 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
                        <button onClick={endHearing} className="w-full flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-lg transition animate-in pulse">
                           <Square size={18} fill="currentColor"/> Encerrar Sessão
                        </button>
-                    )}
-                    {hearingStatus === 'ended' && (
-                        <div className="text-center text-sm text-gray-400 py-2">Sessão finalizada.</div>
                     )}
                  </div>
 
