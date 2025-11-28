@@ -5,6 +5,9 @@ import { Dashboard } from './components/Dashboard';
 import { SimulationChat } from './components/SimulationChat';
 import { MultiplayerRoom } from './components/MultiplayerRoom';
 import { Pricing } from './components/Pricing';
+import { ScenariosView } from './components/ScenariosView';
+import { MultiplayerLobby } from './components/MultiplayerLobby';
+import { Settings } from './components/Settings';
 import { initializeGemini } from './services/geminiService';
 import { persistenceService } from './services/persistence';
 import { SCENARIOS, MOCK_USER } from './constants';
@@ -67,9 +70,8 @@ const App: React.FC = () => {
   };
 
   const startScenario = (id: string) => {
-    // Premium Check logic could go here
     if (!apiKey) {
-      alert("Para iniciar uma Simulação com IA, você precisa configurar uma Chave API.");
+      alert("Para iniciar uma Simulação com IA, você precisa configurar uma Chave API nas configurações.");
       return;
     }
     setActiveScenarioId(id);
@@ -99,16 +101,10 @@ const App: React.FC = () => {
   };
 
   const handlePlanSelection = (role: any, cycle: string) => {
-     // Mock Payment Processing & Persistence
      alert(`Processando pagamento via Stripe (${cycle})...\n\nPagamento Aprovado! Bem-vindo ao plano Premium.`);
-     
      const updatedUser = { ...user, plan: 'PREMIUM' as const, role: role };
      setUser(updatedUser);
-     
-     // CRITICAL: Update storage so refresh doesn't lose the plan
-     // We default to 'true' (localStorage) to persist the purchase state for the demo
      persistenceService.saveSession(apiKey, updatedUser, true); 
-     
      setCurrentView('dashboard');
   };
 
@@ -133,29 +129,21 @@ const App: React.FC = () => {
   );
 
   const renderContent = () => {
+    // 1. Full Screen Mods (No Layout)
     if (currentView === 'pricing') {
        return <Pricing onSelectPlan={handlePlanSelection} onCancel={() => setCurrentView('dashboard')} />;
     }
-
     if (currentView === 'simulation_active' && activeScenarioId) {
       const scenario = SCENARIOS.find(s => s.id === activeScenarioId)!;
-      return (
-        <SimulationChat 
-          scenario={scenario} 
-          onExit={() => setCurrentView('dashboard')} 
-          apiKey={apiKey}
-          user={user}
-        />
-      );
+      return <SimulationChat scenario={scenario} onExit={() => setCurrentView('scenarios')} apiKey={apiKey} user={user} />;
     }
-
     if (currentView === 'multiplayer_active' && multiplayerRole) {
       return (
         <MultiplayerRoom 
           onExit={() => {
             setMultiplayerRole(null);
             setShowRoleSelection(false);
-            setCurrentView('dashboard');
+            setCurrentView('multiplayer'); // Go back to lobby
             const url = new URL(window.location.href);
             url.searchParams.delete('room');
             window.history.replaceState({}, '', url);
@@ -167,8 +155,28 @@ const App: React.FC = () => {
         />
       );
     }
+    
+    // 2. Specific Views (With Layout)
+    
+    // Scenarios Library & AI Simulation Entry
+    if (currentView === 'scenarios' || currentView === 'simulation') {
+      return <ScenariosView onStartScenario={startScenario} user={user} onUpgrade={() => setCurrentView('pricing')} />;
+    }
 
-    // Role Selection Modal/Screen
+    // Multiplayer Lobby (Start/Join)
+    if (currentView === 'multiplayer' && !showRoleSelection) {
+      return (
+        <MultiplayerLobby 
+           onStartNewMeeting={handleStartNewMeeting}
+           onJoinMeeting={handleJoinMeeting}
+           joinCode={joinCodeInput}
+           setJoinCode={setJoinCodeInput}
+           user={user}
+        />
+      );
+    }
+
+    // Role Selection Modal (inside Multiplayer context)
     if (currentView === 'multiplayer' && showRoleSelection) {
       return (
         <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
@@ -182,18 +190,16 @@ const App: React.FC = () => {
               <p className="text-gray-500">Selecione qual cadeira você irá ocupar nesta audiência.</p>
             </div>
             <button 
-              onClick={() => { setShowRoleSelection(false); setCurrentView('dashboard'); }}
+              onClick={() => { setShowRoleSelection(false); setCurrentView('multiplayer'); }}
               className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition"
             >
-              Cancelar
+              Voltar
             </button>
           </div>
           
           <div className="space-y-8">
             <section>
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                <Gavel size={14} /> Magistratura e Serventia
-              </h3>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2"><Gavel size={14} /> Magistratura e Serventia</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <RoleCard role={CourtRole.JUDGE} title="Juiz de Direito" desc="Preside a audiência, mantém a ordem e profere a sentença." icon={Gavel} colorClass="bg-legal-100 text-legal-800" />
                 <RoleCard role={CourtRole.CLERK} title="Escrivão" desc="Registra os atos da audiência e auxilia o juiz." icon={ScrollText} colorClass="bg-slate-100 text-slate-800" />
@@ -219,8 +225,20 @@ const App: React.FC = () => {
         </div>
       );
     }
+    
+    // Settings
+    if (currentView === 'settings') {
+      return (
+        <Settings 
+           user={user} 
+           apiKey={apiKey} 
+           onUpdateApiKey={(k) => setApiKey(k)}
+           onLogout={handleLogout}
+        />
+      );
+    }
 
-    // Default catch-all: Dashboard with logic to trigger Start/Join meeting
+    // Default: Dashboard
     return (
         <Dashboard 
             onStartScenario={startScenario} 
