@@ -101,11 +101,8 @@ const App: React.FC = () => {
   };
 
   const handlePlanSelection = (role: any, cycle: string) => {
-     alert(`Processando pagamento via Stripe (${cycle})...\n\nPagamento Aprovado! Bem-vindo ao plano Premium.`);
-     const updatedUser = { ...user, plan: 'PREMIUM' as const, role: role };
-     setUser(updatedUser);
-     persistenceService.saveSession(apiKey, updatedUser, true); 
-     setCurrentView('dashboard');
+     // FEATURE DISABLED FOR DEMO
+     alert("Gateway de Pagamento (Stripe) ainda não configurado para este ambiente de demonstração.\n\nA assinatura não foi processada.");
   };
 
   // Helper for Role Cards

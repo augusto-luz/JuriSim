@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, Shield, Zap, GraduationCap, Briefcase, Building, Users } from 'lucide-react';
+import { Check, Shield, Zap, GraduationCap, Briefcase, Building, Users, AlertTriangle, Lock } from 'lucide-react';
 import { UserRole } from '../types';
 
 interface PricingProps {
@@ -24,7 +24,6 @@ export const Pricing: React.FC<PricingProps> = ({ onSelectPlan, onCancel }) => {
         'Multiplayer Básico'
       ],
       color: 'bg-blue-50 border-blue-200 text-blue-900',
-      btnColor: 'bg-blue-600 hover:bg-blue-700'
     },
     {
       role: UserRole.LAWYER,
@@ -40,7 +39,6 @@ export const Pricing: React.FC<PricingProps> = ({ onSelectPlan, onCancel }) => {
         'Prioridade no Suporte'
       ],
       color: 'bg-legal-50 border-legal-200 text-legal-900',
-      btnColor: 'bg-legal-800 hover:bg-legal-700',
       popular: true
     },
     {
@@ -57,7 +55,6 @@ export const Pricing: React.FC<PricingProps> = ({ onSelectPlan, onCancel }) => {
         'Dashboard de Turma'
       ],
       color: 'bg-purple-50 border-purple-200 text-purple-900',
-      btnColor: 'bg-purple-600 hover:bg-purple-700'
     }
   ];
 
@@ -72,10 +69,22 @@ export const Pricing: React.FC<PricingProps> = ({ onSelectPlan, onCancel }) => {
           <p className="mt-4 max-w-2xl text-xl text-gray-500 mx-auto">
             Da graduação à advocacia de alta performance, temos a ferramenta certa para você.
           </p>
+          
+          {/* Gateway Warning */}
+          <div className="mt-6 mx-auto max-w-lg bg-amber-50 border border-amber-200 p-4 rounded-lg flex items-start gap-3 text-left">
+             <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={20}/>
+             <div>
+                <h4 className="font-bold text-amber-800 text-sm">Pagamentos Temporariamente Inativos</h4>
+                <p className="text-xs text-amber-700 mt-1">
+                   O gateway de pagamento (Stripe) ainda não foi vinculado a este ambiente de produção. 
+                   A assinatura de novos planos está suspensa no momento.
+                </p>
+             </div>
+          </div>
         </div>
 
         {/* Billing Toggle */}
-        <div className="mt-8 flex justify-center">
+        <div className="mt-8 flex justify-center opacity-50 pointer-events-none">
           <div className="relative bg-white border border-gray-200 rounded-lg p-1 flex">
             <button
               onClick={() => setBilling('monthly')}
@@ -96,10 +105,10 @@ export const Pricing: React.FC<PricingProps> = ({ onSelectPlan, onCancel }) => {
           {plans.map((plan) => {
             const Icon = plan.icon;
             return (
-              <div key={plan.title} className={`relative border rounded-2xl shadow-sm flex flex-col justify-between p-8 bg-white hover:shadow-lg transition-shadow duration-300 ${plan.popular ? 'ring-2 ring-legal-500 scale-105 z-10' : 'border-gray-200'}`}>
+              <div key={plan.title} className={`relative border rounded-2xl shadow-sm flex flex-col justify-between p-8 bg-white ${plan.popular ? 'ring-2 ring-gray-200' : 'border-gray-200'}`}>
                 {plan.popular && (
-                  <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2">
-                    <span className="inline-flex rounded-full bg-accent-gold px-4 py-1 text-sm font-semibold tracking-wider uppercase text-white shadow-sm">
+                  <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 grayscale">
+                    <span className="inline-flex rounded-full bg-gray-600 px-4 py-1 text-sm font-semibold tracking-wider uppercase text-white shadow-sm">
                       Recomendado
                     </span>
                   </div>
@@ -130,10 +139,14 @@ export const Pricing: React.FC<PricingProps> = ({ onSelectPlan, onCancel }) => {
                 </div>
 
                 <button
+                  disabled={true}
                   onClick={() => onSelectPlan(plan.role, billing)}
-                  className={`mt-8 block w-full py-3 px-6 border border-transparent rounded-md text-center font-medium text-white shadow-sm transition-colors ${plan.btnColor}`}
+                  className={`mt-8 block w-full py-3 px-6 border border-transparent rounded-md text-center font-medium text-white shadow-sm cursor-not-allowed bg-gray-300`}
                 >
-                  Assinar Agora
+                  <div className="flex items-center justify-center gap-2">
+                     <Lock size={16}/>
+                     Assinatura Indisponível
+                  </div>
                 </button>
               </div>
             );
@@ -141,7 +154,7 @@ export const Pricing: React.FC<PricingProps> = ({ onSelectPlan, onCancel }) => {
         </div>
 
         {/* Enterprise / Institution */}
-        <div className="mt-10 max-w-4xl mx-auto bg-slate-900 rounded-2xl shadow-xl overflow-hidden lg:grid lg:grid-cols-2 lg:gap-4">
+        <div className="mt-10 max-w-4xl mx-auto bg-slate-900 rounded-2xl shadow-xl overflow-hidden lg:grid lg:grid-cols-2 lg:gap-4 opacity-75">
           <div className="pt-10 pb-12 px-6 sm:pt-16 sm:px-16 lg:py-16 lg:pr-0 xl:py-20 xl:px-20">
             <div className="lg:self-center">
               <h2 className="text-3xl font-extrabold text-white sm:text-4xl">
@@ -150,9 +163,9 @@ export const Pricing: React.FC<PricingProps> = ({ onSelectPlan, onCancel }) => {
               <p className="mt-4 text-lg leading-6 text-legal-200">
                 Soluções personalizadas com licenças em volume, integração LMS (Moodle/Canvas) e suporte dedicado.
               </p>
-              <a href="#" className="mt-8 bg-white border border-transparent rounded-md shadow px-5 py-3 inline-flex items-center text-base font-medium text-legal-900 hover:bg-legal-50">
-                Falar com Vendas
-              </a>
+              <button disabled className="mt-8 bg-gray-600 border border-transparent rounded-md shadow px-5 py-3 inline-flex items-center text-base font-medium text-gray-300 cursor-not-allowed">
+                Falar com Vendas (Em breve)
+              </button>
             </div>
           </div>
           <div className="-mt-6 aspect-w-5 aspect-h-3 md:aspect-w-2 md:aspect-h-1 opacity-50 lg:opacity-100 relative">
@@ -161,8 +174,8 @@ export const Pricing: React.FC<PricingProps> = ({ onSelectPlan, onCancel }) => {
         </div>
         
         <div className="mt-8 text-center">
-           <button onClick={onCancel} className="text-gray-500 hover:text-gray-900 text-sm font-medium">
-             Continuar com plano Gratuito (Limitado)
+           <button onClick={onCancel} className="text-legal-600 hover:text-legal-900 text-sm font-bold underline">
+             Voltar ao Dashboard
            </button>
         </div>
       </div>

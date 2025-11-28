@@ -2,8 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ChatMessage, Scenario, User } from '../types';
 import { generateCharacterResponse } from '../services/geminiService';
 import { persistenceService } from '../services/persistence';
-import { SYSTEM_PROMPTS } from '../constants';
-import { Send, User as UserIcon, Bot, ArrowLeft, Loader2, RefreshCw, AlertCircle, Lock } from 'lucide-react';
+import { DYNAMIC_HEARING_PROMPT } from '../constants';
+import { Send, User as UserIcon, Bot, ArrowLeft, Loader2, RefreshCw, AlertCircle, Lock, Scale, Gavel, ShieldAlert } from 'lucide-react';
 
 interface SimulationChatProps {
   scenario: Scenario;
@@ -21,8 +21,8 @@ export const SimulationChat: React.FC<SimulationChatProps> = ({ scenario, onExit
       {
         id: '0',
         role: 'model',
-        senderName: 'Juiz',
-        text: `Bom dia a todos. Estamos reunidos para a audiência do processo "${scenario.title}". Doutor(a), pode iniciar suas alegações iniciais.`,
+        senderName: 'Sistema JuriSim',
+        text: `[JUIZ]: Bom dia. Estamos reunidos para a audiência do processo "${scenario.title}". O Tribunal Virtual está aberto. Doutor(a) ${user.name}, pode iniciar suas alegações.`,
         timestamp: Date.now()
       }
     ];
@@ -45,7 +45,6 @@ export const SimulationChat: React.FC<SimulationChatProps> = ({ scenario, onExit
 
   useEffect(() => {
     if (scrollRef.current) {
-        // Use scrollIntoView on the last element for robust scrolling
         const lastChild = scrollRef.current.lastElementChild;
         if (lastChild) {
             lastChild.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -71,21 +70,19 @@ export const SimulationChat: React.FC<SimulationChatProps> = ({ scenario, onExit
     setIsLoading(true);
 
     try {
-      let activeCharacter = 'Juiz';
-      let prompt = SYSTEM_PROMPTS.JUDGE;
-      const lowerInput = inputValue.toLowerCase();
-      if (lowerInput.includes('defesa') || lowerInput.includes('promotor')) {
-        activeCharacter = 'Advogado da Parte Contrária';
-        prompt = SYSTEM_PROMPTS.OPPOSING_COUNSEL;
-      }
-
       const historyForAI = [...messages, userMsg];
-      const responseText = await generateCharacterResponse(activeCharacter, prompt, historyForAI, inputValue);
+      
+      const responseText = await generateCharacterResponse(
+          'Mesa de Audiência (Juiz & Oponente)', 
+          DYNAMIC_HEARING_PROMPT, 
+          historyForAI, 
+          inputValue
+      );
 
       const aiMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'model',
-        senderName: activeCharacter,
+        senderName: 'Tribunal Virtual',
         text: responseText,
         timestamp: Date.now()
       };
@@ -105,14 +102,48 @@ export const SimulationChat: React.FC<SimulationChatProps> = ({ scenario, onExit
       setMessages([{
         id: Date.now().toString(),
         role: 'model',
-        senderName: 'Juiz',
-        text: `Bom dia. Vamos reiniciar a audiência do processo "${scenario.title}".`,
+        senderName: 'Sistema JuriSim',
+        text: `[JUIZ]: Audiência reiniciada. Doutor(a) ${user.name}, tem a palavra.`,
         timestamp: Date.now()
       }]);
     }
   };
 
-  // If no API Key, show lock screen (Safety fallback if they bypass Layout check)
+  // Helper to render the multi-part messages nicely
+  const renderMessageContent = (text: string) => {
+    // Split by newlines to process blocks
+    const lines = text.split('\n').filter(line => line.trim() !== '');
+    
+    return lines.map((line, i) => {
+       const isJudge = line.toUpperCase().includes('[JUIZ]');
+       const isOpponent = line.toUpperCase().includes('[PARTE CONTRÁRIA]') || line.toUpperCase().includes('[OPOSIÇÃO]');
+       
+       if (isJudge) {
+          return (
+             <div key={i} className="mb-3 bg-slate-50 p-2 rounded-lg border-l-4 border-legal-800">
+                <div className="flex items-center gap-1 text-legal-800 font-bold text-xs mb-1 font-serif uppercase">
+                   <Gavel size={12}/> Juiz de Direito
+                </div>
+                <div className="text-gray-800">{line.replace(/\[.*?\]:?/g, '').trim()}</div>
+             </div>
+          );
+       }
+       
+       if (isOpponent) {
+          return (
+             <div key={i} className="mb-3 bg-red-50 p-2 rounded-lg border-l-4 border-red-500">
+                <div className="flex items-center gap-1 text-red-700 font-bold text-xs mb-1 font-serif uppercase">
+                   <ShieldAlert size={12}/> Parte Contrária
+                </div>
+                <div className="text-gray-800">{line.replace(/\[.*?\]:?/g, '').trim()}</div>
+             </div>
+          );
+       }
+
+       return <div key={i} className="mb-1">{line}</div>;
+    });
+  };
+
   if (!apiKey) {
     return (
        <div className="flex flex-col h-full items-center justify-center bg-slate-50 p-8 text-center">
@@ -121,7 +152,7 @@ export const SimulationChat: React.FC<SimulationChatProps> = ({ scenario, onExit
           </div>
           <h2 className="text-2xl font-bold text-gray-800 mb-2">Simulação Bloqueada</h2>
           <p className="text-gray-500 max-w-md mb-8">
-             Você entrou no modo convidado sem uma Chave API. Para interagir com o Juiz IA, você precisa adicionar uma chave nas configurações ou fazer login novamente.
+             Você entrou no modo convidado sem uma Chave API. Para interagir com o Juiz IA, você precisa adicionar uma chave nas configurações.
           </p>
           <button onClick={onExit} className="px-6 py-3 bg-legal-800 text-white rounded-lg font-bold">
              Voltar ao Menu
@@ -139,7 +170,7 @@ export const SimulationChat: React.FC<SimulationChatProps> = ({ scenario, onExit
             <h2 className="font-bold text-gray-900 text-lg">{scenario.title}</h2>
             <div className="flex items-center space-x-2">
                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-               <p className="text-xs text-gray-500 font-medium">Gemini 2.5 Flash • Ativo</p>
+               <p className="text-xs text-gray-500 font-medium">Tribunal Virtual • Juiz & Oposição Ativos</p>
             </div>
           </div>
         </div>
@@ -151,16 +182,17 @@ export const SimulationChat: React.FC<SimulationChatProps> = ({ scenario, onExit
       <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6" ref={scrollRef}>
         {messages.map((msg) => {
           const isUser = msg.role === 'user';
+          
           return (
             <div key={msg.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2`}>
-              <div className={`flex max-w-[85%] md:max-w-[70%] ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+              <div className={`flex max-w-[95%] md:max-w-[85%] ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
                 <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center border ${isUser ? 'bg-legal-800 ml-3 text-white' : 'bg-white mr-3 text-legal-600'}`}>
-                  {isUser ? <UserIcon size={16} /> : <Bot size={16} />}
+                  {isUser ? <UserIcon size={16} /> : <Scale size={16} />}
                 </div>
                 <div>
                   <div className={`text-xs text-gray-400 mb-1 ${isUser ? 'text-right' : 'text-left'}`}>{msg.senderName}</div>
                   <div className={`p-4 rounded-2xl text-sm leading-relaxed shadow-sm ${isUser ? 'bg-legal-700 text-white rounded-tr-none' : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'}`}>
-                    {msg.text}
+                    {isUser ? msg.text : renderMessageContent(msg.text)}
                   </div>
                 </div>
               </div>
@@ -169,7 +201,7 @@ export const SimulationChat: React.FC<SimulationChatProps> = ({ scenario, onExit
         })}
         {isLoading && (
            <div className="flex items-center gap-2 text-gray-400 text-sm ml-12 animate-pulse">
-              <Bot size={16}/> O Juiz está analisando...
+              <Bot size={16}/> O Juiz está deliberando...
            </div>
         )}
         {error && <div className="text-center text-red-500 bg-red-50 p-2 rounded text-sm mx-auto max-w-md">{error}</div>}
@@ -181,7 +213,7 @@ export const SimulationChat: React.FC<SimulationChatProps> = ({ scenario, onExit
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())}
-            placeholder="Digite sua argumentação..."
+            placeholder="Digite sua argumentação, objeção ou resposta..."
             className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-legal-500 outline-none resize-none h-[60px]"
           />
           <button onClick={handleSendMessage} disabled={isLoading || !inputValue.trim()} className="w-[60px] bg-legal-800 text-white rounded-xl flex items-center justify-center hover:bg-legal-700 disabled:opacity-50 transition shadow-lg">
