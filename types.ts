@@ -1,9 +1,9 @@
 export enum UserRole {
   STUDENT = 'STUDENT',
-  LAWYER = 'LAWYER',        // Novo: Advogado Individual
+  LAWYER = 'LAWYER',
   INSTRUCTOR = 'INSTRUCTOR',
-  OFFICE = 'OFFICE',        // Novo: Escritório
-  INSTITUTION = 'INSTITUTION', // Novo: Instituição
+  OFFICE = 'OFFICE',
+  INSTITUTION = 'INSTITUTION',
   ADMIN = 'ADMIN'
 }
 
@@ -24,7 +24,7 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
-  plan?: 'FREE' | 'PREMIUM'; // Controle de monetização
+  plan?: 'FREE' | 'PREMIUM';
   organizationId?: string;
 }
 
@@ -35,6 +35,11 @@ export interface Scenario {
   difficulty: 'Iniciante' | 'Intermediário' | 'Avançado';
   area: 'Civil' | 'Penal' | 'Trabalhista' | 'Empresarial';
   progress: number;
+  // Autos do Processo
+  facts?: string;
+  evidence?: string[];
+  witnesses?: string[];
+  objectives?: string[];
 }
 
 export interface ChatMessage {
@@ -58,7 +63,6 @@ export interface Participant {
   stream?: MediaStream;
 }
 
-// Novos tipos para Educação (Fase 2)
 export interface Classroom {
   id: string;
   name: string;

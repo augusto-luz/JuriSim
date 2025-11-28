@@ -3,6 +3,7 @@ import { Auth } from './components/Auth';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { SimulationChat } from './components/SimulationChat';
+import { CaseBriefing } from './components/CaseBriefing';
 import { MultiplayerRoom } from './components/MultiplayerRoom';
 import { Pricing } from './components/Pricing';
 import { ScenariosView } from './components/ScenariosView';
@@ -75,7 +76,12 @@ const App: React.FC = () => {
       return;
     }
     setActiveScenarioId(id);
-    setCurrentView('simulation_active');
+    // CHANGE: Navigate to briefing first, not directly to active chat
+    setCurrentView('simulation_briefing');
+  };
+
+  const handleBriefingStart = () => {
+     setCurrentView('simulation_active');
   };
 
   const generateRoomCode = () => {
@@ -130,8 +136,22 @@ const App: React.FC = () => {
     if (currentView === 'pricing') {
        return <Pricing onSelectPlan={handlePlanSelection} onCancel={() => setCurrentView('dashboard')} />;
     }
+
+    // NEW VIEW: Briefing (Autos do Processo)
+    if (currentView === 'simulation_briefing' && activeScenarioId) {
+       const scenario = persistenceService.getScenarioById(user.id, activeScenarioId);
+       if (!scenario) return <div className="p-8 text-center text-red-500">Erro: Cenário não encontrado.</div>;
+       
+       return (
+          <CaseBriefing 
+             scenario={scenario} 
+             onStart={handleBriefingStart} 
+             onBack={() => setCurrentView('scenarios')} 
+          />
+       );
+    }
     
-    // BUG FIX: use getScenarioById to check both Constants AND Custom storage
+    // Active Chat
     if (currentView === 'simulation_active' && activeScenarioId) {
       const scenario = persistenceService.getScenarioById(user.id, activeScenarioId);
       
@@ -140,6 +160,7 @@ const App: React.FC = () => {
           return <div className="p-8 text-center text-red-500">Erro: Cenário não encontrado. <button onClick={() => setCurrentView('scenarios')} className="underline">Voltar</button></div>;
       }
       
+      // Changed exit target to 'scenarios' so user goes back to library
       return <SimulationChat scenario={scenario} onExit={() => setCurrentView('scenarios')} apiKey={apiKey} user={user} />;
     }
 
@@ -262,7 +283,7 @@ const App: React.FC = () => {
 
   if (!isAuthenticated) return <Auth onLogin={handleLogin} />;
 
-  if (currentView === 'simulation_active' || currentView === 'multiplayer_active') {
+  if (currentView === 'simulation_active' || currentView === 'multiplayer_active' || currentView === 'simulation_briefing') {
     return <div className="h-screen w-screen overflow-hidden">{renderContent()}</div>;
   }
 
