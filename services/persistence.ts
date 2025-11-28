@@ -6,6 +6,7 @@ const KEYS = {
   SESSION: 'jurisim_session', // Stores API Key and Auth State
   CHAT_HISTORY: 'jurisim_chat_',
   SCENARIO_PROGRESS: 'jurisim_progress_',
+  CUSTOM_SCENARIOS: 'jurisim_custom_scenarios_', // New key for user created cases
 };
 
 export const persistenceService = {
@@ -100,6 +101,35 @@ export const persistenceService = {
 
   saveScenarioProgress: (userId: string, scenarioId: string, progress: number) => {
     localStorage.setItem(`${KEYS.SCENARIO_PROGRESS}${userId}_${scenarioId}`, progress.toString());
+  },
+
+  // --- Custom Scenarios Management ---
+  getCustomScenarios: (userId: string): Scenario[] => {
+    const stored = localStorage.getItem(`${KEYS.CUSTOM_SCENARIOS}${userId}`);
+    return stored ? JSON.parse(stored) : [];
+  },
+
+  saveCustomScenario: (userId: string, scenario: Scenario) => {
+    const current = persistenceService.getCustomScenarios(userId);
+    const updated = [...current, scenario];
+    localStorage.setItem(`${KEYS.CUSTOM_SCENARIOS}${userId}`, JSON.stringify(updated));
+  },
+
+  deleteCustomScenario: (userId: string, scenarioId: string) => {
+    const current = persistenceService.getCustomScenarios(userId);
+    const updated = current.filter(s => s.id !== scenarioId);
+    localStorage.setItem(`${KEYS.CUSTOM_SCENARIOS}${userId}`, JSON.stringify(updated));
+  },
+
+  // --- Helper: Get Any Scenario (Native or Custom) ---
+  getScenarioById: (userId: string, scenarioId: string): Scenario | undefined => {
+    // 1. Try Native
+    const native = SCENARIOS.find(s => s.id === scenarioId);
+    if (native) return native;
+
+    // 2. Try Custom
+    const customScenarios = persistenceService.getCustomScenarios(userId);
+    return customScenarios.find(s => s.id === scenarioId);
   },
 
   // --- Helpers ---

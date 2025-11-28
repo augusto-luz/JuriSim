@@ -133,10 +133,19 @@ const App: React.FC = () => {
     if (currentView === 'pricing') {
        return <Pricing onSelectPlan={handlePlanSelection} onCancel={() => setCurrentView('dashboard')} />;
     }
+    
+    // BUG FIX: use getScenarioById to check both Constants AND Custom storage
     if (currentView === 'simulation_active' && activeScenarioId) {
-      const scenario = SCENARIOS.find(s => s.id === activeScenarioId)!;
+      const scenario = persistenceService.getScenarioById(user.id, activeScenarioId);
+      
+      if (!scenario) {
+          // Fallback if scenario not found (rare race condition)
+          return <div className="p-8 text-center text-red-500">Erro: Cenário não encontrado. <button onClick={() => setCurrentView('scenarios')} className="underline">Voltar</button></div>;
+      }
+      
       return <SimulationChat scenario={scenario} onExit={() => setCurrentView('scenarios')} apiKey={apiKey} user={user} />;
     }
+
     if (currentView === 'multiplayer_active' && multiplayerRole) {
       return (
         <MultiplayerRoom 
