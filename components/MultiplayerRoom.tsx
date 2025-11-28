@@ -22,6 +22,7 @@ interface MultiplayerRoomProps {
 
 // Separate component to prevent re-renders of the video element
 // Added playsInline for iOS support
+// Added mirroring for local video
 const RemoteVideo = React.memo(({ stream, isVideoOff, name, isLocal = false }: { stream?: MediaStream, isVideoOff: boolean, name?: string, isLocal?: boolean }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   
@@ -53,8 +54,15 @@ const RemoteVideo = React.memo(({ stream, isVideoOff, name, isLocal = false }: {
       );
   }
 
-  // playsInline is crucial for iOS Safari to play video inline instead of fullscreen
-  return <video ref={videoRef} autoPlay playsInline muted={isLocal} className="w-full h-full object-cover"/>;
+  // playsInline is crucial for iOS Safari
+  // scale-x-[-1] mirrors the local video so movement feels natural
+  return <video 
+    ref={videoRef} 
+    autoPlay 
+    playsInline 
+    muted={isLocal} 
+    className={`w-full h-full object-cover ${isLocal ? 'scale-x-[-1]' : ''}`}
+  />;
 });
 
 const ParticipantCard = ({ 
@@ -386,6 +394,7 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
                  <p className="text-gray-300 mb-6">Olá, <strong>{user.name}</strong>.</p>
                  <div className="bg-black/40 p-4 rounded-lg text-sm text-amber-200 border border-amber-900/50 flex items-center gap-3"><AlertOctagon size={20} className="shrink-0"/><span className="text-left">Aguarde o Juiz autorizar sua entrada.</span></div>
                  <div className="mt-6 w-32 h-24 bg-black rounded-lg overflow-hidden mx-auto border border-slate-600 relative">
+                     {/* Mirror local camera in waiting room preview */}
                      <video ref={waitingRoomVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]"/>
                      <div className="absolute bottom-0 w-full bg-black/60 text-[10px] text-center py-0.5">Sua Câmera</div>
                  </div>
