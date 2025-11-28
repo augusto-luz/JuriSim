@@ -4,11 +4,12 @@ import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { SimulationChat } from './components/SimulationChat';
 import { MultiplayerRoom } from './components/MultiplayerRoom';
+import { Pricing } from './components/Pricing';
 import { initializeGemini } from './services/geminiService';
 import { persistenceService } from './services/persistence';
 import { SCENARIOS, MOCK_USER } from './constants';
 import { CourtRole, User as UserType } from './types';
-import { Gavel, Users, User, ArrowRight, Shield, Scale, ScrollText, Video, Keyboard, Plus, AlertCircle } from 'lucide-react';
+import { Gavel, Users, User, ArrowRight, Shield, Scale, ScrollText, Video } from 'lucide-react';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -27,7 +28,6 @@ const App: React.FC = () => {
 
   // Check for existing session on mount
   useEffect(() => {
-    // Check if URL has room param
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
     
@@ -40,10 +40,9 @@ const App: React.FC = () => {
     }
     
     if (roomParam) {
-        // If accessed via link, auto-join flow
         setJoinCodeInput(roomParam);
         setActiveRoomId(roomParam);
-        setIsHost(false); // Link joiners are guests
+        setIsHost(false); 
         setShowRoleSelection(true);
         setCurrentView('multiplayer');
     }
@@ -68,8 +67,9 @@ const App: React.FC = () => {
   };
 
   const startScenario = (id: string) => {
+    // Premium Check logic could go here
     if (!apiKey) {
-      alert("Para iniciar uma Simulação com IA, você precisa configurar uma Chave API nas Configurações ou no Login.");
+      alert("Para iniciar uma Simulação com IA, você precisa configurar uma Chave API.");
       return;
     }
     setActiveScenarioId(id);
@@ -84,16 +84,32 @@ const App: React.FC = () => {
   const handleStartNewMeeting = () => {
     const newCode = generateRoomCode();
     setActiveRoomId(newCode);
-    setIsHost(true); // Creator is Host
+    setIsHost(true);
     setShowRoleSelection(true);
+    setCurrentView('multiplayer'); // Ensure view switches to handle modal
   };
 
   const handleJoinMeeting = () => {
     if (joinCodeInput.trim().length >= 5) {
       setActiveRoomId(joinCodeInput);
-      setIsHost(false); // Joiner is Guest
+      setIsHost(false);
       setShowRoleSelection(true);
+      setCurrentView('multiplayer');
     }
+  };
+
+  const handlePlanSelection = (role: any, cycle: string) => {
+     // Mock Payment Processing & Persistence
+     alert(`Processando pagamento via Stripe (${cycle})...\n\nPagamento Aprovado! Bem-vindo ao plano Premium.`);
+     
+     const updatedUser = { ...user, plan: 'PREMIUM' as const, role: role };
+     setUser(updatedUser);
+     
+     // CRITICAL: Update storage so refresh doesn't lose the plan
+     // We default to 'true' (localStorage) to persist the purchase state for the demo
+     persistenceService.saveSession(apiKey, updatedUser, true); 
+     
+     setCurrentView('dashboard');
   };
 
   // Helper for Role Cards
@@ -117,6 +133,10 @@ const App: React.FC = () => {
   );
 
   const renderContent = () => {
+    if (currentView === 'pricing') {
+       return <Pricing onSelectPlan={handlePlanSelection} onCancel={() => setCurrentView('dashboard')} />;
+    }
+
     if (currentView === 'simulation_active' && activeScenarioId) {
       const scenario = SCENARIOS.find(s => s.id === activeScenarioId)!;
       return (
@@ -136,7 +156,6 @@ const App: React.FC = () => {
             setMultiplayerRole(null);
             setShowRoleSelection(false);
             setCurrentView('dashboard');
-            // Clear URL param on exit
             const url = new URL(window.location.href);
             url.searchParams.delete('room');
             window.history.replaceState({}, '', url);
@@ -149,9 +168,10 @@ const App: React.FC = () => {
       );
     }
 
+    // Role Selection Modal/Screen
     if (currentView === 'multiplayer' && showRoleSelection) {
       return (
-        <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
           <div className="flex items-center justify-between border-b pb-4">
             <div>
               <div className="flex items-center gap-2 text-legal-600 text-sm font-medium mb-1">
@@ -162,15 +182,14 @@ const App: React.FC = () => {
               <p className="text-gray-500">Selecione qual cadeira você irá ocupar nesta audiência.</p>
             </div>
             <button 
-              onClick={() => setShowRoleSelection(false)}
+              onClick={() => { setShowRoleSelection(false); setCurrentView('dashboard'); }}
               className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition"
             >
               Cancelar
             </button>
           </div>
           
-          <div className="space-y-8 pb-10">
-            {/* Sections unchanged... */}
+          <div className="space-y-8">
             <section>
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <Gavel size={14} /> Magistratura e Serventia
@@ -201,51 +220,18 @@ const App: React.FC = () => {
       );
     }
 
-    if (currentView === 'multiplayer') {
-      const now = new Date();
-      return (
-        <div className="h-full flex flex-col md:flex-row p-6 md:p-12 gap-8 md:gap-16 items-center justify-center bg-white">
-           <div className="max-w-md w-full space-y-8">
-              <div className="space-y-4">
-                <h1 className="text-3xl md:text-5xl font-serif font-bold text-legal-900 leading-tight">Audiências virtuais e simulações premium.</h1>
-                <p className="text-lg text-gray-500">A JuriSim conecta estudantes e profissionais. Participe de audiências ao vivo mesmo sem chave API.</p>
-                {!apiKey && <div className="flex items-start gap-3 bg-amber-50 p-4 rounded-lg border border-amber-100 text-sm text-amber-800"><AlertCircle size={20} className="shrink-0 mt-0.5" /><div><p className="font-bold">Modo Convidado</p><p>Você está logado sem chave API. A Simulação com IA está desativada.</p></div></div>}
-              </div>
-
-              <div className="flex flex-col sm:flex-row items-start gap-4">
-                 <button onClick={handleStartNewMeeting} className="flex items-center gap-2 bg-legal-800 hover:bg-legal-700 text-white px-6 py-3 rounded-lg font-medium shadow-lg hover:shadow-xl transition transform active:scale-95"><Plus size={20} /> Nova Audiência</button>
-                 <div className="flex items-center gap-2 w-full sm:w-auto relative">
-                    <div className="absolute left-3 text-gray-400"><Keyboard size={18} /></div>
-                    <input type="text" placeholder="Código ou link" value={joinCodeInput} onChange={(e) => setJoinCodeInput(e.target.value)} className="w-full sm:w-64 pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-legal-500 outline-none text-gray-700" />
-                    <button onClick={handleJoinMeeting} disabled={joinCodeInput.length < 3} className="text-legal-600 font-medium hover:bg-legal-50 px-4 py-3 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition">Entrar</button>
-                 </div>
-              </div>
-           </div>
-           {/* Decorative Blob */}
-           <div className="hidden md:flex flex-1 items-center justify-center relative w-full max-w-lg aspect-square">
-               <div className="absolute top-0 right-0 w-64 h-64 bg-blue-100 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-blob"></div>
-               <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-100 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-blob animation-delay-2000"></div>
-               <div className="relative bg-white p-6 rounded-2xl shadow-2xl border border-gray-100 w-full">
-                  <div className="aspect-video bg-legal-900 rounded-lg mb-4 flex items-center justify-center relative overflow-hidden group">
-                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-                     <Gavel size={48} className="text-white/20 group-hover:text-white/40 transition duration-500" />
-                     <div className="absolute bottom-4 left-4 text-white"><div className="text-xs font-bold bg-red-600 px-2 py-0.5 rounded inline-block mb-1">AO VIVO</div><p className="font-bold">Sala 001 - Instrução</p></div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                     <div className="flex -space-x-3">{[1,2,3].map(i => <div key={i} className="w-10 h-10 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-500">U{i}</div>)}<div className="w-10 h-10 rounded-full border-2 border-white bg-legal-100 flex items-center justify-center text-xs font-bold text-legal-600">+12</div></div>
-                     <div className="text-right"><p className="text-2xl font-light text-gray-900">{now.getHours()}:{now.getMinutes().toString().padStart(2, '0')}</p><p className="text-xs text-gray-500">{now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'short' })}</p></div>
-                  </div>
-               </div>
-           </div>
-        </div>
-      );
-    }
-
-    if (currentView === 'scenarios') {
-      return <Dashboard onStartScenario={startScenario} user={user} />;
-    }
-    
-    return <Dashboard onStartScenario={startScenario} user={user} />;
+    // Default catch-all: Dashboard with logic to trigger Start/Join meeting
+    return (
+        <Dashboard 
+            onStartScenario={startScenario} 
+            user={user} 
+            onUpgrade={() => setCurrentView('pricing')} 
+            onStartMeeting={handleStartNewMeeting}
+            onJoinMeeting={handleJoinMeeting}
+            joinCode={joinCodeInput}
+            setJoinCode={setJoinCodeInput}
+        />
+    );
   };
 
   if (isLoadingSession) return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-legal-800"></div></div>;
@@ -256,7 +242,17 @@ const App: React.FC = () => {
     return <div className="h-screen w-screen overflow-hidden">{renderContent()}</div>;
   }
 
-  return <Layout user={user} currentView={currentView} hasApiKey={!!apiKey} onChangeView={setCurrentView} onLogout={handleLogout}>{renderContent()}</Layout>;
+  return (
+    <Layout 
+      user={user} 
+      currentView={currentView} 
+      hasApiKey={!!apiKey} 
+      onChangeView={setCurrentView} 
+      onLogout={handleLogout}
+    >
+      {renderContent()}
+    </Layout>
+  );
 };
 
 export default App;

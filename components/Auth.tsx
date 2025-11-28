@@ -171,6 +171,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                   ) : (
                     <>
                       <option value={UserRole.STUDENT}>Estudante</option>
+                      <option value={UserRole.LAWYER}>Advogado</option>
                       <option value={UserRole.INSTRUCTOR}>Instrutor</option>
                     </>
                   )}

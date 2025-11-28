@@ -21,14 +21,17 @@ interface MultiplayerRoomProps {
 }
 
 // Separate component to prevent re-renders of the video element
+// Added playsInline for iOS support
 const RemoteVideo = React.memo(({ stream, isVideoOff, name, isLocal = false }: { stream?: MediaStream, isVideoOff: boolean, name?: string, isLocal?: boolean }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   
   useEffect(() => {
      if (videoRef.current && stream) {
          videoRef.current.srcObject = stream;
+         // iOS requires explicit play() after srcObject assignment
          videoRef.current.play().catch(e => {
              console.warn("Auto-play prevented", e);
+             // If auto-play blocked, try muting
              if (videoRef.current) {
                 videoRef.current.muted = true;
                 videoRef.current.play().catch(console.error);
@@ -50,10 +53,10 @@ const RemoteVideo = React.memo(({ stream, isVideoOff, name, isLocal = false }: {
       );
   }
 
+  // playsInline is crucial for iOS Safari to play video inline instead of fullscreen
   return <video ref={videoRef} autoPlay playsInline muted={isLocal} className="w-full h-full object-cover"/>;
 });
 
-// Card component for uniform rendering
 const ParticipantCard = ({ 
   participant, 
   isLocal, 
@@ -201,6 +204,11 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
     let mounted = true;
     const startCamera = async () => {
       try {
+        // Safe check for mediaDevices (may be undefined in non-secure context)
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error("Media devices not supported");
+        }
+
         const constraints = { 
           video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } }, 
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } 
@@ -218,7 +226,7 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
         // Connect Signaling
         roomSignaling.connect(roomId, { ...localUser, isMuted: false, isVideoOff: false }, isHost, stream);
 
-        // Audio Visualizer
+        // Audio Visualizer setup
         const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
         if (AudioContextClass) {
           const audioContext = new AudioContextClass();
@@ -244,7 +252,7 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
         }
       } catch (err: any) {
         console.error("Media Error:", err);
-        // Fallback connection
+        // Fallback connection without media
         roomSignaling.connect(roomId, { ...localUser, isMuted: true, isVideoOff: true }, isHost, null);
       }
     };
@@ -340,7 +348,6 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
   };
 
   // --- UNIFIED PARTICIPANT LIST FOR GRID ---
-  // Combine local and remote users into one list for rendering to support Pinning everyone easily
   const allActiveParticipants = useMemo(() => {
     const list: (Participant & { stream?: MediaStream, isLocal: boolean })[] = [];
     
@@ -372,14 +379,14 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
       
       {/* WAITING ROOM OVERLAY */}
       {isInWaitingRoom && (
-         <div className="absolute inset-0 z-50 bg-slate-900/95 backdrop-blur-sm flex flex-col items-center justify-center text-white">
-             <div className="bg-slate-800 p-8 rounded-2xl border border-white/10 text-center max-w-md shadow-2xl">
+         <div className="absolute inset-0 z-50 bg-slate-900/95 backdrop-blur-sm flex flex-col items-center justify-center text-white px-4">
+             <div className="bg-slate-800 p-8 rounded-2xl border border-white/10 text-center max-w-md shadow-2xl w-full">
                  <div className="w-20 h-20 bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse"><Shield size={40} className="text-amber-500" /></div>
                  <h2 className="text-3xl font-serif font-bold mb-2">Sala de Espera</h2>
                  <p className="text-gray-300 mb-6">Olá, <strong>{user.name}</strong>.</p>
                  <div className="bg-black/40 p-4 rounded-lg text-sm text-amber-200 border border-amber-900/50 flex items-center gap-3"><AlertOctagon size={20} className="shrink-0"/><span className="text-left">Aguarde o Juiz autorizar sua entrada.</span></div>
                  <div className="mt-6 w-32 h-24 bg-black rounded-lg overflow-hidden mx-auto border border-slate-600 relative">
-                     <video ref={waitingRoomVideoRef} autoPlay muted playsInline className="w-full h-full object-cover scale-x-[-1]"/>
+                     <video ref={waitingRoomVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]"/>
                      <div className="absolute bottom-0 w-full bg-black/60 text-[10px] text-center py-0.5">Sua Câmera</div>
                  </div>
              </div>
@@ -478,7 +485,7 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
       </div>
 
       {/* FOOTER CONTROLS */}
-      <div className="h-20 bg-slate-900 border-t border-slate-800 shrink-0 flex items-center justify-center gap-4 relative z-30">
+      <div className="h-20 bg-slate-900 border-t border-slate-800 shrink-0 flex items-center justify-center gap-4 relative z-30 safe-area-bottom">
           <button onClick={() => setShowMeetingInfo(!showMeetingInfo)} className="absolute left-6 text-slate-500 hover:text-white md:flex hidden flex-col items-center"><Info size={20} /><span className="text-[10px] mt-1">Info</span></button>
           
           <button onClick={toggleMute} className={`p-4 rounded-full transition ${!isMuted ? 'bg-slate-700 hover:bg-slate-600' : 'bg-red-500/20 text-red-500 border border-red-500/50'}`}>{!isMuted ? <Mic size={24}/> : <MicOff size={24}/>}</button>
