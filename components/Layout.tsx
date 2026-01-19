@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { 
   LayoutDashboard, 
@@ -10,7 +11,6 @@ import {
   Menu,
   X,
   HelpCircle,
-  Lock,
   Crown
 } from 'lucide-react';
 import { User } from '../types';
@@ -19,7 +19,6 @@ interface LayoutProps {
   children: React.ReactNode;
   user: User;
   currentView: string;
-  hasApiKey: boolean;
   onChangeView: (view: string) => void;
   onLogout: () => void;
 }
@@ -44,7 +43,7 @@ const NavItem = ({ icon: Icon, label, active, onClick, disabled = false, badge }
   </button>
 );
 
-export const Layout: React.FC<LayoutProps> = ({ children, user, currentView, hasApiKey, onChangeView, onLogout }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, user, currentView, onChangeView, onLogout }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const isPremium = user.plan === 'PREMIUM' || user.role === 'ADMIN';
 
@@ -82,8 +81,6 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, currentView, has
             icon={MessageSquare} 
             label="Simulação IA" 
             active={currentView === 'simulation'} 
-            disabled={!hasApiKey}
-            badge={!hasApiKey && <Lock size={14} className="text-legal-500"/>}
             onClick={() => onChangeView('simulation')} 
           />
           <NavItem 
@@ -151,13 +148,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, currentView, has
           <NavItem icon={LayoutDashboard} label="Dashboard" active={currentView === 'dashboard'} onClick={() => {onChangeView('dashboard'); setIsMobileMenuOpen(false);}} />
           
           <button 
-            disabled={!hasApiKey}
             onClick={() => {onChangeView('simulation'); setIsMobileMenuOpen(false);}}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg ${!hasApiKey ? 'text-legal-600' : 'text-legal-300'}`}
+            className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-legal-300"
           >
              <MessageSquare size={20}/>
              <span>Simulação IA</span>
-             {!hasApiKey && <Lock size={14} className="ml-auto"/>}
           </button>
           
           <NavItem icon={Video} label="Audiência ao Vivo" active={currentView === 'multiplayer'} onClick={() => {onChangeView('multiplayer'); setIsMobileMenuOpen(false);}} />

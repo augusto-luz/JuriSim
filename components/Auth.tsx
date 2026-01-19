@@ -1,16 +1,16 @@
+
 import React, { useState, useEffect } from 'react';
-import { Gavel, KeyRound, ArrowRight, User, AlertTriangle, ShieldCheck, Lock } from 'lucide-react';
+import { Gavel, ArrowRight, User, ShieldCheck, Lock } from 'lucide-react';
 import { UserRole, User as UserType } from '../types';
 
 interface AuthProps {
-  onLogin: (apiKey: string, user: UserType, remember: boolean) => void;
+  onLogin: (user: UserType, remember: boolean) => void;
 }
 
 export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    apiKey: '',
     role: UserRole.STUDENT,
     password: ''
   });
@@ -56,11 +56,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         return;
       }
     }
-    
-    if (formData.apiKey.length > 0 && formData.apiKey.trim().length < 10) {
-       setError("A chave da API parece inválida. Deixe em branco para entrar sem IA.");
-       return;
-    }
 
     setIsLoading(true);
 
@@ -84,8 +79,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         role: finalRole
       };
       
-      // Pass empty string if no key provided
-      onLogin(formData.apiKey, newUser, rememberMe); 
+      onLogin(newUser, rememberMe); 
       setIsLoading(false);
     }, 800);
   };
@@ -123,11 +117,11 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             </div>
             <div className="flex items-center gap-4 text-sm text-legal-200">
               <div className="w-8 h-8 rounded-full bg-legal-800 flex items-center justify-center text-accent-gold font-bold">2</div>
-              <span>Conecte sua chave Gemini AI (Opcional)</span>
+              <span>Pratique em casos reais e complexos</span>
             </div>
             <div className="flex items-center gap-4 text-sm text-legal-200">
               <div className="w-8 h-8 rounded-full bg-legal-800 flex items-center justify-center text-accent-gold font-bold">3</div>
-              <span>Inicie simulações imersivas</span>
+              <span>Inicie simulações imersivas com IA</span>
             </div>
           </div>
         </div>
@@ -136,7 +130,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         <div className="md:w-1/2 p-8 md:p-12 flex flex-col justify-center bg-white">
           <div className="mb-8">
             <h3 className="text-2xl font-bold text-gray-900">Acesse sua conta</h3>
-            <p className="text-gray-500 text-sm mt-1">Configure seu perfil para entrar na sala de audiência.</p>
+            <p className="text-gray-500 text-sm mt-1">Configure seu perfil para entrar na plataforma.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -213,33 +207,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 </div>
               </div>
             )}
-
-            <div className="space-y-1.5 pt-2 border-t border-gray-100">
-               <label className="text-xs font-semibold text-gray-700 uppercase flex justify-between items-center">
-                  <div className="flex items-center gap-2">
-                     <span>Gemini API Key</span>
-                     <span className="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded text-[10px] font-normal">Opcional</span>
-                  </div>
-                  <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline cursor-pointer text-[10px] normal-case">Obter Chave</a>
-               </label>
-              <div className="relative">
-                <KeyRound className="absolute left-3 top-3 text-gray-400" size={18} />
-                <input
-                  type="password"
-                  value={formData.apiKey}
-                  onChange={(e) => setFormData({...formData, apiKey: e.target.value})}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-legal-500 focus:border-legal-500 outline-none transition text-gray-900 placeholder-gray-400 font-mono text-sm"
-                  placeholder="Deixe em branco para usar apenas Multiplayer"
-                />
-              </div>
-              
-              {!formData.apiKey && (
-                 <div className="flex items-start gap-2 text-[11px] text-amber-600 bg-amber-50 p-2 rounded">
-                    <AlertTriangle size={12} className="mt-0.5 shrink-0"/>
-                    <p>Sem a chave, a <strong>Simulação com IA</strong> ficará indisponível. Você poderá acessar apenas o Multiplayer e Dashboard.</p>
-                 </div>
-              )}
-            </div>
 
             <div className="flex items-center gap-2">
                <input 

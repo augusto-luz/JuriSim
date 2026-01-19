@@ -35,11 +35,36 @@ export interface Scenario {
   difficulty: 'Iniciante' | 'Intermediário' | 'Avançado';
   area: 'Civil' | 'Penal' | 'Trabalhista' | 'Empresarial';
   progress: number;
-  // Autos do Processo
-  facts?: string;
-  evidence?: string[];
-  witnesses?: string[];
-  objectives?: string[];
+  facts: string;
+  evidence: string[];
+  witnesses: string[];
+  objectives: string[];
+}
+
+export interface StudentReport {
+  id: string;
+  studentId: string;
+  studentName: string;
+  scenarioId: string;
+  scenarioTitle: string;
+  score: number;
+  feedback: string;
+  technicalAnalysis: {
+    rhetoric: number;
+    procedure: number;
+    evidenceHandling: number;
+  };
+  timestamp: number;
+}
+
+export interface Classroom {
+  id: string;
+  name: string;
+  instructorId: string;
+  area: 'Civil' | 'Penal' | 'Trabalhista' | 'Empresarial' | 'Multi';
+  inviteCode: string;
+  studentIds: string[];
+  assignedScenarioIds: string[];
 }
 
 export interface ChatMessage {
@@ -61,11 +86,4 @@ export interface Participant {
   audioLevel?: number;
   status: 'waiting' | 'active' | 'disconnected' | 'kicked';
   stream?: MediaStream;
-}
-
-export interface Classroom {
-  id: string;
-  name: string;
-  studentCount: number;
-  activeCase: string;
 }

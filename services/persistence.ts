@@ -1,130 +1,39 @@
-import { ChatMessage, User, Scenario } from '../types';
+
+import { ChatMessage, User, Scenario, Classroom, StudentReport } from '../types';
 import { SCENARIOS, MOCK_USER } from '../constants';
 
 const KEYS = {
   USER: 'jurisim_user',
-  SESSION: 'jurisim_session', // Stores API Key and Auth State
+  SESSION: 'jurisim_session',
   CHAT_HISTORY: 'jurisim_chat_',
   SCENARIO_PROGRESS: 'jurisim_progress_',
-  CUSTOM_SCENARIOS: 'jurisim_custom_scenarios_', // New key for user created cases
+  CUSTOM_SCENARIOS: 'jurisim_custom_scenarios_',
+  CLASSROOMS: 'jurisim_classrooms_',
+  REPORTS: 'jurisim_reports_',
 };
 
 export const persistenceService = {
-  // --- Session Management ---
-  saveSession: (apiKey: string, user: User, remember: boolean) => {
+  saveSession: (user: User, remember: boolean) => {
     try {
         const storage = remember ? localStorage : sessionStorage;
-        
-        // Simple obfuscation to prevent casual shoulder-surfing. 
-        const sessionData = {
-          key: btoa(apiKey),
-          timestamp: Date.now()
-        };
-        
-        // Clear other storage to prevent sync issues
-        if (remember) {
-            sessionStorage.removeItem(KEYS.SESSION);
-            sessionStorage.removeItem(KEYS.USER);
-        } else {
-            localStorage.removeItem(KEYS.SESSION);
-            localStorage.removeItem(KEYS.USER);
-        }
-    
-        storage.setItem(KEYS.SESSION, JSON.stringify(sessionData));
         storage.setItem(KEYS.USER, JSON.stringify(user));
-    } catch (e) {
-        console.error("Storage limit reached or access denied", e);
-    }
+    } catch (e) { console.error("Storage limit reached", e); }
   },
 
-  restoreSession: (): { apiKey: string, user: User } | null => {
+  restoreSession: (): User | null => {
     try {
-      // Check SessionStorage first (active tab), then LocalStorage
-      let sessionStored = sessionStorage.getItem(KEYS.SESSION);
-      let userStored = sessionStorage.getItem(KEYS.USER);
-
-      if (!sessionStored || !userStored) {
-         sessionStored = localStorage.getItem(KEYS.SESSION);
-         userStored = localStorage.getItem(KEYS.USER);
-      }
-
-      if (sessionStored && userStored) {
-        const session = JSON.parse(sessionStored);
-        const user = JSON.parse(userStored);
-        
-        // Decode key with safe check
-        let apiKey = '';
-        if (session.key) {
-            try {
-                apiKey = atob(session.key);
-            } catch {
-                console.warn("Invalid API key format in storage");
-            }
-        }
-        
-        // Basic validation
-        if (user && user.id) {
-          return { apiKey, user };
-        }
-      }
-    } catch (e) {
-      console.error("Failed to restore session", e);
-      persistenceService.clearSession();
-    }
+      let userStored = sessionStorage.getItem(KEYS.USER) || localStorage.getItem(KEYS.USER);
+      if (userStored) return JSON.parse(userStored);
+    } catch (e) { }
     return null;
   },
 
   clearSession: () => {
-    localStorage.removeItem(KEYS.SESSION);
     localStorage.removeItem(KEYS.USER);
-    sessionStorage.removeItem(KEYS.SESSION);
     sessionStorage.removeItem(KEYS.USER);
   },
 
-  // --- User Data ---
-  getUser: (): User => {
-    try {
-        const stored = localStorage.getItem(KEYS.USER) || sessionStorage.getItem(KEYS.USER);
-        return stored ? JSON.parse(stored) : MOCK_USER;
-    } catch {
-        return MOCK_USER;
-    }
-  },
-  
-  // --- Chat History (Per User & Scenario) ---
-  getChatHistory: (userId: string, scenarioId: string): ChatMessage[] | null => {
-    try {
-        const stored = localStorage.getItem(`${KEYS.CHAT_HISTORY}${userId}_${scenarioId}`);
-        return stored ? JSON.parse(stored) : null;
-    } catch { return null; }
-  },
-
-  saveChatHistory: (userId: string, scenarioId: string, messages: ChatMessage[]) => {
-    try {
-        localStorage.setItem(`${KEYS.CHAT_HISTORY}${userId}_${scenarioId}`, JSON.stringify(messages));
-    } catch (e) { console.error("Quota exceeded", e); }
-  },
-
-  clearChatHistory: (userId: string, scenarioId: string) => {
-    localStorage.removeItem(`${KEYS.CHAT_HISTORY}${userId}_${scenarioId}`);
-  },
-
-  // --- Scenario Progress (Per User) ---
-  getScenarioProgress: (userId: string, scenarioId: string): number => {
-    try {
-        const stored = localStorage.getItem(`${KEYS.SCENARIO_PROGRESS}${userId}_${scenarioId}`);
-        if (stored) return parseInt(stored, 10);
-        // Fallback to constants if not found locally
-        const constantScenario = SCENARIOS.find(s => s.id === scenarioId);
-        return constantScenario ? constantScenario.progress : 0;
-    } catch { return 0; }
-  },
-
-  saveScenarioProgress: (userId: string, scenarioId: string, progress: number) => {
-    localStorage.setItem(`${KEYS.SCENARIO_PROGRESS}${userId}_${scenarioId}`, progress.toString());
-  },
-
-  // --- Custom Scenarios Management ---
+  // --- Scenarios ---
   getCustomScenarios: (userId: string): Scenario[] => {
     try {
         const stored = localStorage.getItem(`${KEYS.CUSTOM_SCENARIOS}${userId}`);
@@ -133,33 +42,89 @@ export const persistenceService = {
   },
 
   saveCustomScenario: (userId: string, scenario: Scenario) => {
-    try {
-        const current = persistenceService.getCustomScenarios(userId);
-        const updated = [...current, scenario];
-        localStorage.setItem(`${KEYS.CUSTOM_SCENARIOS}${userId}`, JSON.stringify(updated));
-    } catch (e) { alert("Erro ao salvar cenário. Armazenamento cheio."); }
-  },
-
-  deleteCustomScenario: (userId: string, scenarioId: string) => {
     const current = persistenceService.getCustomScenarios(userId);
-    const updated = current.filter(s => s.id !== scenarioId);
-    localStorage.setItem(`${KEYS.CUSTOM_SCENARIOS}${userId}`, JSON.stringify(updated));
+    localStorage.setItem(`${KEYS.CUSTOM_SCENARIOS}${userId}`, JSON.stringify([...current, scenario]));
   },
 
-  // --- Helper: Get Any Scenario (Native or Custom) ---
+  getScenarioProgress: (userId: string, scenarioId: string): number => {
+    const stored = localStorage.getItem(`${KEYS.SCENARIO_PROGRESS}${userId}_${scenarioId}`);
+    return stored ? parseInt(stored, 10) : 0;
+  },
+
+  saveScenarioProgress: (userId: string, scenarioId: string, progress: number) => {
+    localStorage.setItem(`${KEYS.SCENARIO_PROGRESS}${userId}_${scenarioId}`, progress.toString());
+  },
+
+  // --- LMS (Classrooms & Reports) ---
+  getClassrooms: (userId: string): Classroom[] => {
+    const stored = localStorage.getItem(`${KEYS.CLASSROOMS}${userId}`);
+    return stored ? JSON.parse(stored) : [];
+  },
+
+  saveClassroom: (classroom: Classroom) => {
+    const current = persistenceService.getClassrooms(classroom.instructorId);
+    localStorage.setItem(`${KEYS.CLASSROOMS}${classroom.instructorId}`, JSON.stringify([...current, classroom]));
+  },
+
+  joinClassroom: (userId: string, inviteCode: string): boolean => {
+    // Procura em todos os registros de turmas de todos os instrutores (simulado para local)
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(KEYS.CLASSROOMS)) {
+        const classes: Classroom[] = JSON.parse(localStorage.getItem(key) || '[]');
+        const target = classes.find(c => c.inviteCode === inviteCode);
+        if (target) {
+          if (!target.studentIds.includes(userId)) {
+            target.studentIds.push(userId);
+            localStorage.setItem(key, JSON.stringify(classes));
+          }
+          return true;
+        }
+      }
+    }
+    return false;
+  },
+
+  saveStudentReport: (report: StudentReport) => {
+    const reports = JSON.parse(localStorage.getItem(KEYS.REPORTS) || '[]');
+    localStorage.setItem(KEYS.REPORTS, JSON.stringify([...reports, report]));
+  },
+
+  getReportsByStudent: (studentId: string): StudentReport[] => {
+    const reports = JSON.parse(localStorage.getItem(KEYS.REPORTS) || '[]');
+    return reports.filter((r: StudentReport) => r.studentId === studentId);
+  },
+
+  getReportsByClass: (studentIds: string[]): StudentReport[] => {
+    const reports = JSON.parse(localStorage.getItem(KEYS.REPORTS) || '[]');
+    return reports.filter((r: StudentReport) => studentIds.includes(r.studentId));
+  },
+
+  // --- Generic ---
   getScenarioById: (userId: string, scenarioId: string): Scenario | undefined => {
-    // 1. Try Native
     const native = SCENARIOS.find(s => s.id === scenarioId);
     if (native) return native;
-
-    // 2. Try Custom
-    const customScenarios = persistenceService.getCustomScenarios(userId);
-    return customScenarios.find(s => s.id === scenarioId);
+    return persistenceService.getCustomScenarios(userId).find(s => s.id === scenarioId);
   },
 
-  // --- Helpers ---
+  getChatHistory: (userId: string, scenarioId: string): ChatMessage[] | null => {
+    const stored = localStorage.getItem(`${KEYS.CHAT_HISTORY}${userId}_${scenarioId}`);
+    return stored ? JSON.parse(stored) : null;
+  },
+
+  saveChatHistory: (userId: string, scenarioId: string, messages: ChatMessage[]) => {
+    localStorage.setItem(`${KEYS.CHAT_HISTORY}${userId}_${scenarioId}`, JSON.stringify(messages));
+  },
+
   resetAll: () => {
-    localStorage.clear();
+    const prefixes = Object.values(KEYS);
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && prefixes.some(p => key.startsWith(p))) {
+        localStorage.removeItem(key);
+        i--;
+      }
+    }
     sessionStorage.clear();
   }
 };
