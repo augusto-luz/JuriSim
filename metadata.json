@@ -1,6 +1,6 @@
 {
   "name": "JuriSim - Plataforma de Simulação Jurídica",
-  "description": "Uma plataforma avançada para treinamento jurídico com simulações de IA e sala de audiências virtual.",
+  "description": "Plataforma avançada para treinamento jurídico com simulações de IA e tribunal virtual em tempo real.",
   "requestFramePermissions": [
     "camera",
     "microphone"

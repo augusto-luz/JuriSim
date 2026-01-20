@@ -1,10 +1,12 @@
-import React from 'react';
-import { Video, Keyboard, Users, Shield, Globe, Clock, Calendar } from 'lucide-react';
-import { User } from '../types';
+
+import React, { useEffect, useState } from 'react';
+import { Video, Keyboard, Users, Shield, Globe, Clock, Calendar, History, ArrowRight, Gavel, Scale, User as UserIcon } from 'lucide-react';
+import { User, CourtRole } from '../types';
+import { persistenceService, RoomHistoryEntry } from '../services/persistence';
 
 interface MultiplayerLobbyProps {
   onStartNewMeeting: () => void;
-  onJoinMeeting: () => void;
+  onJoinMeeting: (role?: CourtRole) => void;
   joinCode: string;
   setJoinCode: (code: string) => void;
   user: User;
@@ -17,30 +19,41 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
   setJoinCode,
   user
 }) => {
+  const [history, setHistory] = useState<RoomHistoryEntry[]>([]);
+
+  useEffect(() => {
+    setHistory(persistenceService.getRoomHistory(user.id));
+  }, [user.id]);
+
+  const handleReconnect = (entry: RoomHistoryEntry) => {
+    setJoinCode(entry.roomId);
+    onJoinMeeting(entry.role);
+  };
+
   return (
     <div className="h-full flex flex-col md:flex-row bg-slate-50 animate-in fade-in">
       
       {/* Left Column: Actions */}
-      <div className="flex-1 p-8 md:p-12 flex flex-col justify-center max-w-2xl">
+      <div className="flex-1 p-8 md:p-12 flex flex-col justify-center max-w-2xl overflow-y-auto custom-scrollbar">
          <div className="mb-10">
             <h1 className="text-4xl md:text-5xl font-serif font-bold text-legal-900 mb-6 leading-tight">
                Audiências Simuladas <br/> em <span className="text-accent-gold">Tempo Real</span>.
             </h1>
             <p className="text-lg text-legal-600 mb-8 leading-relaxed">
-               Conecte-se com colegas, professores ou advogados para praticar a oratória e o procedimento em um tribunal virtual seguro e interativo.
+               Conecte-se com colegas e professores para praticar o rito processual em um tribunal virtual seguro.
             </p>
          </div>
 
-         <div className="flex flex-col sm:flex-row gap-4 mb-12">
+         <div className="flex flex-col sm:flex-row gap-4 mb-10">
             <button 
                onClick={onStartNewMeeting}
-               className="flex items-center justify-center gap-3 bg-legal-900 text-white px-8 py-4 rounded-xl text-lg font-bold hover:bg-legal-800 transition shadow-xl hover:shadow-2xl hover:-translate-y-1 transform"
+               className="flex items-center justify-center gap-3 bg-legal-900 text-white px-8 py-4 rounded-xl text-lg font-bold hover:bg-legal-800 transition shadow-xl"
             >
                <Video size={24}/>
                Nova Audiência
             </button>
             
-            <div className="flex items-center bg-white border border-gray-300 rounded-xl px-4 py-2 shadow-sm focus-within:ring-2 focus-within:ring-legal-500 focus-within:border-transparent transition">
+            <div className="flex items-center bg-white border border-gray-300 rounded-xl px-4 py-2 shadow-sm focus-within:ring-2 focus-within:ring-legal-500 transition">
                <Keyboard className="text-gray-400 mr-3" size={24}/>
                <input 
                   type="text" 
@@ -50,37 +63,58 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                   className="bg-transparent border-none outline-none text-gray-700 placeholder-gray-400 w-full font-mono"
                />
                <button 
-                  onClick={onJoinMeeting}
+                  onClick={() => onJoinMeeting()}
                   disabled={!joinCode}
-                  className="ml-2 text-legal-900 font-bold hover:text-accent-gold disabled:opacity-30 disabled:cursor-not-allowed uppercase text-sm"
+                  className="ml-2 text-legal-900 font-bold hover:text-accent-gold disabled:opacity-30 uppercase text-sm"
                >
                   Entrar
                </button>
             </div>
          </div>
 
+         {/* Salas Recentes Section */}
+         {history.length > 0 && (
+           <div className="space-y-4 mb-12 animate-in slide-in-from-left-4">
+              <div className="flex items-center gap-2 text-legal-400 font-bold text-xs uppercase tracking-widest mb-2">
+                 <History size={14}/>
+                 Histórico de Audiências
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                 {history.map((entry) => (
+                   <button 
+                     key={entry.roomId} 
+                     onClick={() => handleReconnect(entry)}
+                     className="bg-white border border-slate-200 p-4 rounded-2xl text-left hover:border-accent-gold hover:shadow-md transition-all group"
+                   >
+                      <div className="flex justify-between items-start mb-2">
+                         <div className="p-2 bg-slate-50 rounded-lg group-hover:bg-accent-gold/10 transition-colors">
+                            {entry.role === CourtRole.JUDGE ? <Gavel size={16} className="text-legal-700"/> : <UserIcon size={16} className="text-legal-700"/>}
+                         </div>
+                         <span className="text-[10px] font-mono text-slate-400">#{entry.roomId.split('-').pop()}</span>
+                      </div>
+                      <p className="text-sm font-bold text-legal-900 truncate mb-1">{entry.title || "Audiência sem título"}</p>
+                      <div className="flex justify-between items-center">
+                         <span className="text-[10px] font-black text-accent-gold uppercase tracking-tighter">{entry.role}</span>
+                         <ArrowRight size={12} className="text-slate-300 group-hover:text-accent-gold transform group-hover:translate-x-1 transition-all"/>
+                      </div>
+                   </button>
+                 ))}
+              </div>
+           </div>
+         )}
+
          <div className="border-t border-gray-200 pt-8">
             <div className="flex gap-8 text-sm text-gray-500">
-               <div className="flex items-center gap-2">
-                  <Shield size={16}/> <span>Ambiente Seguro</span>
-               </div>
-               <div className="flex items-center gap-2">
-                  <Users size={16}/> <span>Multi-papéis</span>
-               </div>
-               <div className="flex items-center gap-2">
-                  <Globe size={16}/> <span>Via WebRTC (P2P)</span>
-               </div>
+               <div className="flex items-center gap-2"><Shield size={16}/> <span>Seguro</span></div>
+               <div className="flex items-center gap-2"><Users size={16}/> <span>Multi-papeis</span></div>
             </div>
          </div>
       </div>
 
       {/* Right Column: Visual/Hero */}
       <div className="hidden md:flex flex-1 bg-legal-900 relative overflow-hidden items-center justify-center text-white p-12">
-         {/* Background Effects */}
          <div className="absolute top-0 right-0 w-96 h-96 bg-accent-gold rounded-full mix-blend-multiply filter blur-[100px] opacity-20"></div>
-         <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-600 rounded-full mix-blend-multiply filter blur-[100px] opacity-20"></div>
          
-         {/* Date/Time Widget */}
          <div className="relative z-10 text-center space-y-2">
             <div className="text-7xl font-serif font-thin tracking-wider">
                {new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}
@@ -89,19 +123,6 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                <Calendar size={14}/>
                {new Date().toLocaleDateString('pt-BR', {weekday: 'long', day: 'numeric', month: 'long'})}
             </div>
-         </div>
-
-         {/* Carousel / Tips (Static for now) */}
-         <div className="absolute bottom-12 left-12 right-12 bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/10">
-             <div className="flex items-start gap-4">
-                 <div className="bg-accent-gold p-2 rounded-lg text-legal-900">
-                    <Clock size={20}/>
-                 </div>
-                 <div>
-                    <h4 className="font-bold text-white mb-1">Próxima Sessão Recomendada</h4>
-                    <p className="text-legal-200 text-sm">Simulação de Instrução - Caso 042 (Roubo). <span className="text-white underline cursor-pointer">Agendar</span></p>
-                 </div>
-             </div>
          </div>
       </div>
     </div>

@@ -23,7 +23,12 @@ export const SimulationChat: React.FC<SimulationChatProps> = ({ scenario, onExit
   const [isLoading, setIsLoading] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
   const [report, setReport] = useState<StudentReport | null>(null);
+  const [startTime] = useState(Date.now());
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    persistenceService.trackScenarioStart(scenario.id);
+  }, []);
 
   useEffect(() => {
     persistenceService.saveChatHistory(user.id, scenario.id, messages);
@@ -56,9 +61,11 @@ export const SimulationChat: React.FC<SimulationChatProps> = ({ scenario, onExit
     }
     
     setIsFinishing(true);
+    const exerciseMinutes = Math.floor((Date.now() - startTime) / 60000);
+    persistenceService.trackExerciseTime(user.id, Math.max(1, exerciseMinutes));
+
     try {
       const evaluation = await generateLegalEvaluation(messages, scenario.title);
-      
       const finalReport: StudentReport = {
         id: `rep_${Date.now()}`,
         studentId: user.id,
@@ -79,7 +86,7 @@ export const SimulationChat: React.FC<SimulationChatProps> = ({ scenario, onExit
       persistenceService.saveScenarioProgress(user.id, scenario.id, 100);
       setReport(finalReport);
     } catch (e) {
-      alert("Erro ao gerar relatório. Tente novamente.");
+      alert("Erro ao gerar relatório.");
     } finally { setIsFinishing(false); }
   };
 
@@ -156,8 +163,8 @@ const SkillMetric = ({ label, val }: any) => (
 
 const renderLegalContent = (text: string) => {
   return text.split('\n').map((line, i) => {
-    if (line.includes('[JUIZ]')) return <div key={i} className="mb-2 bg-slate-50 border-l-4 border-legal-900 p-2 text-xs italic">{line}</div>;
-    if (line.includes('[PARTE')) return <div key={i} className="mb-2 bg-red-50 border-l-4 border-red-500 p-2 text-xs italic">{line}</div>;
-    return <div key={i}>{line}</div>;
+    if (line.includes('[JUIZ]')) return <div key={i} className="mb-2 bg-slate-50 border-l-4 border-legal-900 p-2 text-xs italic font-medium">{line}</div>;
+    if (line.includes('[PARTE')) return <div key={i} className="mb-2 bg-red-50 border-l-4 border-red-500 p-2 text-xs italic font-medium">{line}</div>;
+    return <div key={i} className="mb-1">{line}</div>;
   });
 };

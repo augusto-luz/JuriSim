@@ -11,8 +11,9 @@ import { ScenariosView } from './components/ScenariosView';
 import { MultiplayerLobby } from './components/MultiplayerLobby';
 import { Settings } from './components/Settings';
 import { persistenceService } from './services/persistence';
-import { MOCK_USER } from './constants';
+import { MOCK_USER, SCENARIOS } from './constants';
 import { CourtRole, User as UserType } from './types';
+import { X, User as UserIcon, Shield, Gavel, Scale, Users, PlayCircle, Info } from 'lucide-react';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -38,9 +39,16 @@ const App: React.FC = () => {
     if (roomParam) {
         setJoinCodeInput(roomParam);
         setActiveRoomId(roomParam);
-        setIsHost(false); 
-        setShowRoleSelection(true);
-        setCurrentView('multiplayer');
+        const previousRole = restoredUser ? persistenceService.getRoleForRoom(restoredUser.id, roomParam) : null;
+        if (previousRole) {
+          setMultiplayerRole(previousRole);
+          setIsHost(false);
+          setCurrentView('multiplayer_active');
+        } else {
+          setIsHost(false); 
+          setShowRoleSelection(true);
+          setCurrentView('multiplayer');
+        }
     }
     setIsLoadingSession(false);
   }, []);
@@ -63,8 +71,42 @@ const App: React.FC = () => {
     setCurrentView('simulation_briefing');
   };
 
+  const navigateToSimulation = () => {
+     // Achar o último cenário com progresso
+     const all = [...SCENARIOS, ...persistenceService.getCustomScenarios(user.id)];
+     const withProgress = all
+       .map(s => ({ ...s, progress: persistenceService.getScenarioProgress(user.id, s.id) }))
+       .filter(s => s.progress > 0 && s.progress < 100)
+       .sort((a, b) => b.progress - a.progress);
+
+     if (withProgress.length > 0) {
+        setActiveScenarioId(withProgress[0].id);
+        setCurrentView('simulation_active');
+     } else {
+        // Se não houver progresso, vai para o hub de seleção
+        setCurrentView('simulation_hub');
+     }
+  };
+
+  /**
+   * Helper to handle entering a multiplayer room with a role.
+   */
+  const handleSelectRole = (role: CourtRole) => {
+    setMultiplayerRole(role);
+    setShowRoleSelection(false);
+    setCurrentView('multiplayer_active');
+    
+    // Save to user's room history
+    persistenceService.saveRoomHistory(user.id, {
+      roomId: activeRoomId,
+      role: role,
+      title: `Sessão ${activeRoomId}`,
+      timestamp: Date.now()
+    });
+  };
+
   const renderContent = () => {
-    if (currentView === 'pricing') return <Pricing onSelectPlan={() => alert("Gateway em manutenção")} onCancel={() => setCurrentView('dashboard')} />;
+    if (currentView === 'pricing') return <Pricing onSelectPlan={() => alert("Assinatura liberada via API Key")} onCancel={() => setCurrentView('dashboard')} />;
 
     if (currentView === 'simulation_briefing' && activeScenarioId) {
        const scenario = persistenceService.getScenarioById(user.id, activeScenarioId);
@@ -76,6 +118,23 @@ const App: React.FC = () => {
       return scenario ? <SimulationChat scenario={scenario} onExit={() => setCurrentView('scenarios')} user={user} /> : null;
     }
 
+    if (currentView === 'simulation_hub') {
+       return (
+         <div className="h-full flex flex-col items-center justify-center p-6 text-center animate-in fade-in">
+            <div className="max-w-md bg-white p-12 rounded-[3rem] shadow-2xl border border-slate-100">
+               <div className="bg-legal-900 w-20 h-20 rounded-3xl flex items-center justify-center text-accent-gold mx-auto mb-8 shadow-xl">
+                  <PlayCircle size={40}/>
+               </div>
+               <h2 className="text-3xl font-serif font-bold text-legal-900 mb-4">Pronto para praticar?</h2>
+               <p className="text-slate-500 mb-10 leading-relaxed">Você ainda não tem audiências em curso. Escolha um caso na biblioteca de cenários para iniciar sua simulação com IA.</p>
+               <button onClick={() => setCurrentView('scenarios')} className="w-full py-5 bg-legal-900 text-white rounded-2xl font-bold shadow-xl hover:bg-accent-gold hover:text-legal-900 transition-all flex items-center justify-center gap-3">
+                  Acessar Biblioteca <X className="rotate-45" size={18}/>
+               </button>
+            </div>
+         </div>
+       );
+    }
+
     if (currentView === 'multiplayer_active' && multiplayerRole) {
       return <MultiplayerRoom onExit={() => setCurrentView('multiplayer')} currentUserRole={multiplayerRole} roomId={activeRoomId} user={user} isHost={isHost} />;
     }
@@ -84,10 +143,29 @@ const App: React.FC = () => {
       case 'dashboard':
         return <Dashboard onStartScenario={startScenario} user={user} onUpgrade={() => setCurrentView('pricing')} onChangeView={setCurrentView} />;
       case 'scenarios':
-      case 'simulation':
         return <ScenariosView onStartScenario={startScenario} user={user} onUpgrade={() => setCurrentView('pricing')} />;
+      case 'simulation':
+        // Menu 'Simulação IA' redireciona inteligentemente
+        navigateToSimulation();
+        return null;
       case 'multiplayer':
-        return <MultiplayerLobby onStartNewMeeting={() => { setActiveRoomId('room-'+Date.now()); setIsHost(true); setShowRoleSelection(true); }} onJoinMeeting={() => setShowRoleSelection(true)} joinCode={joinCodeInput} setJoinCode={setJoinCodeInput} user={user} />;
+        return (
+          <MultiplayerLobby 
+            onStartNewMeeting={() => { setActiveRoomId('room-'+Date.now()); setIsHost(true); setShowRoleSelection(true); }} 
+            onJoinMeeting={(role) => {
+              if (role) {
+                handleSelectRole(role);
+              } else if (joinCodeInput) {
+                setActiveRoomId(joinCodeInput);
+                setIsHost(false); 
+                setShowRoleSelection(true);
+              }
+            }} 
+            joinCode={joinCodeInput} 
+            setJoinCode={setJoinCodeInput} 
+            user={user} 
+          />
+        );
       case 'settings':
         return <Settings user={user} onLogout={handleLogout} />;
       default:
@@ -95,20 +173,56 @@ const App: React.FC = () => {
     }
   };
 
-  if (isLoadingSession) return <div className="min-h-screen bg-slate-50 flex items-center justify-center">Carregando...</div>;
+  if (isLoadingSession) return <div className="min-h-screen bg-slate-50 flex items-center justify-center">Carregando JuriSim...</div>;
   if (!isAuthenticated) return <Auth onLogin={handleLogin} />;
 
   return (
     <div className="h-screen w-screen overflow-hidden">
-      {['simulation_active', 'multiplayer_active', 'simulation_briefing'].includes(currentView) ? (
+      {['simulation_active', 'multiplayer_active', 'simulation_briefing', 'simulation_hub'].includes(currentView) ? (
         renderContent()
       ) : (
         <Layout user={user} currentView={currentView} onChangeView={setCurrentView} onLogout={handleLogout}>
           {renderContent()}
         </Layout>
       )}
+
+      {/* ROLE SELECTION MODAL */}
+      {showRoleSelection && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-legal-900/80 backdrop-blur-md animate-in fade-in">
+           <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-200">
+              <div className="p-8 bg-legal-900 text-white flex justify-between items-center">
+                 <div>
+                    <h2 className="text-2xl font-serif font-bold">Identificação Processual</h2>
+                    <p className="text-legal-400 text-sm">Selecione seu papel nesta audiência ao vivo</p>
+                 </div>
+                 <button onClick={() => setShowRoleSelection(false)} className="p-2 hover:bg-white/10 rounded-full transition"><X size={24}/></button>
+              </div>
+              <div className="p-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                 <RoleOption icon={Gavel} title="Juiz de Direito" role={CourtRole.JUDGE} onClick={handleSelectRole} description="Presida a sessão e profira a sentença final." />
+                 <RoleOption icon={Scale} title="Promotor de Justiça" role={CourtRole.PROSECUTOR} onClick={handleSelectRole} description="Represente o Ministério Público no caso." />
+                 <RoleOption icon={Shield} title="Advogado de Defesa" role={CourtRole.DEFENSE} onClick={handleSelectRole} description="Defenda os direitos e garantias do acusado." />
+                 <RoleOption icon={Users} title="Testemunha" role={CourtRole.WITNESS} onClick={handleSelectRole} description="Preste seu depoimento sobre os fatos." />
+              </div>
+           </div>
+        </div>
+      )}
     </div>
   );
 };
+
+const RoleOption = ({ icon: Icon, title, role, onClick, description }: any) => (
+  <button 
+    onClick={() => onClick(role)}
+    className="flex items-start gap-4 p-5 rounded-2xl border-2 border-slate-100 hover:border-accent-gold hover:bg-slate-50 transition-all text-left group"
+  >
+     <div className="bg-legal-100 p-3 rounded-xl text-legal-900 group-hover:bg-accent-gold group-hover:text-legal-900 transition-colors">
+        <Icon size={24}/>
+     </div>
+     <div>
+        <h4 className="font-bold text-legal-900">{title}</h4>
+        <p className="text-xs text-slate-500 mt-1 leading-relaxed">{description}</p>
+     </div>
+  </button>
+);
 
 export default App;

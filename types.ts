@@ -1,3 +1,4 @@
+
 export enum UserRole {
   STUDENT = 'STUDENT',
   LAWYER = 'LAWYER',
@@ -19,6 +20,25 @@ export enum CourtRole {
   JUROR = 'Jurado'
 }
 
+export interface UserPerformance {
+  userId: string;
+  userName: string;
+  totalExerciseTime: number; // em minutos
+  avgOratory: number;
+  avgProcedural: number;
+  avgEvidence: number;
+  totalSimulations: number;
+}
+
+export interface ClassChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderRole: UserRole;
+  text: string;
+  timestamp: number;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -26,6 +46,7 @@ export interface User {
   role: UserRole;
   plan?: 'FREE' | 'PREMIUM';
   organizationId?: string;
+  performance?: UserPerformance;
 }
 
 export interface Scenario {
@@ -65,6 +86,7 @@ export interface Classroom {
   inviteCode: string;
   studentIds: string[];
   assignedScenarioIds: string[];
+  chat?: ClassChatMessage[];
 }
 
 export interface ChatMessage {

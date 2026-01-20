@@ -1,6 +1,6 @@
 
-import { ChatMessage, User, Scenario, Classroom, StudentReport } from '../types';
-import { SCENARIOS, MOCK_USER } from '../constants';
+import { ChatMessage, User, Scenario, Classroom, StudentReport, CourtRole, UserPerformance, ClassChatMessage } from '../types';
+import { SCENARIOS } from '../constants';
 
 const KEYS = {
   USER: 'jurisim_user',
@@ -10,14 +10,25 @@ const KEYS = {
   CUSTOM_SCENARIOS: 'jurisim_custom_scenarios_',
   CLASSROOMS: 'jurisim_classrooms_',
   REPORTS: 'jurisim_reports_',
+  ROOM_HISTORY: 'jurisim_room_history_',
+  PERFORMANCE: 'jurisim_performance_',
+  CLASS_CHAT: 'jurisim_class_chat_',
+  SCENARIO_STATS: 'jurisim_scenario_stats_'
 };
+
+export interface RoomHistoryEntry {
+  roomId: string;
+  role: CourtRole;
+  title: string;
+  timestamp: number;
+}
 
 export const persistenceService = {
   saveSession: (user: User, remember: boolean) => {
     try {
         const storage = remember ? localStorage : sessionStorage;
         storage.setItem(KEYS.USER, JSON.stringify(user));
-    } catch (e) { console.error("Storage limit reached", e); }
+    } catch (e) { console.error("Storage error", e); }
   },
 
   restoreSession: (): User | null => {
@@ -33,17 +44,133 @@ export const persistenceService = {
     sessionStorage.removeItem(KEYS.USER);
   },
 
-  // --- Scenarios ---
-  getCustomScenarios: (userId: string): Scenario[] => {
+  // Telemetria de Performance
+  trackExerciseTime: (userId: string, minutes: number) => {
     try {
-        const stored = localStorage.getItem(`${KEYS.CUSTOM_SCENARIOS}${userId}`);
-        return stored ? JSON.parse(stored) : [];
-    } catch { return []; }
+      const perf = persistenceService.getUserPerformance(userId);
+      perf.totalExerciseTime += minutes;
+      localStorage.setItem(`${KEYS.PERFORMANCE}${userId}`, JSON.stringify(perf));
+    } catch (e) { console.error(e); }
   },
 
-  saveCustomScenario: (userId: string, scenario: Scenario) => {
-    const current = persistenceService.getCustomScenarios(userId);
-    localStorage.setItem(`${KEYS.CUSTOM_SCENARIOS}${userId}`, JSON.stringify([...current, scenario]));
+  trackScenarioStart: (scenarioId: string) => {
+    try {
+      const stats = JSON.parse(localStorage.getItem(KEYS.SCENARIO_STATS) || '{}');
+      stats[scenarioId] = (stats[scenarioId] || 0) + 1;
+      localStorage.setItem(KEYS.SCENARIO_STATS, JSON.stringify(stats));
+    } catch (e) { console.error(e); }
+  },
+
+  updatePerformanceStats: (userId: string, report: StudentReport) => {
+    try {
+      const perf = persistenceService.getUserPerformance(userId);
+      const n = perf.totalSimulations;
+      perf.avgOratory = (perf.avgOratory * n + report.technicalAnalysis.rhetoric) / (n + 1);
+      perf.avgProcedural = (perf.avgProcedural * n + report.technicalAnalysis.procedure) / (n + 1);
+      perf.avgEvidence = (perf.avgEvidence * n + report.technicalAnalysis.evidenceHandling) / (n + 1);
+      perf.totalSimulations += 1;
+      localStorage.setItem(`${KEYS.PERFORMANCE}${userId}`, JSON.stringify(perf));
+    } catch (e) { console.error(e); }
+  },
+
+  getUserPerformance: (userId: string): UserPerformance => {
+    const stored = localStorage.getItem(`${KEYS.PERFORMANCE}${userId}`);
+    return stored ? JSON.parse(stored) : {
+      userId,
+      userName: 'Usuário',
+      totalExerciseTime: 0,
+      avgOratory: 0,
+      avgProcedural: 0,
+      avgEvidence: 0,
+      totalSimulations: 0
+    };
+  },
+
+  getGlobalRankings: (): UserPerformance[] => {
+    const rankings: UserPerformance[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(KEYS.PERFORMANCE)) {
+        try { rankings.push(JSON.parse(localStorage.getItem(key)!)); } catch(e) {}
+      }
+    }
+    if (rankings.length < 3) {
+      rankings.push(
+        { userId: 'm1', userName: 'Dra. Beatriz Santos', totalExerciseTime: 850, avgOratory: 94, avgProcedural: 88, avgEvidence: 92, totalSimulations: 45 },
+        { userId: 'm2', userName: 'Dr. Marcos Oliveira', totalExerciseTime: 620, avgOratory: 85, avgProcedural: 91, avgEvidence: 84, totalSimulations: 32 },
+        { userId: 'm3', userName: 'Dra. Julia Costa', totalExerciseTime: 410, avgOratory: 78, avgProcedural: 72, avgEvidence: 95, totalSimulations: 18 }
+      );
+    }
+    return rankings.sort((a, b) => (b.avgOratory + b.avgProcedural + b.avgEvidence) - (a.avgOratory + a.avgProcedural + a.avgEvidence));
+  },
+
+  getScenarioStats: () => {
+    return JSON.parse(localStorage.getItem(KEYS.SCENARIO_STATS) || '{}');
+  },
+
+  // Classrooms
+  getClassrooms: (userId: string): Classroom[] => {
+    const stored = localStorage.getItem(KEYS.CLASSROOMS);
+    const allClasses: Classroom[] = stored ? JSON.parse(stored) : [];
+    return allClasses.filter(c => c.instructorId === userId || (c.studentIds && c.studentIds.includes(userId)));
+  },
+
+  saveClassroom: (classroom: Classroom) => {
+    try {
+      const stored = localStorage.getItem(KEYS.CLASSROOMS);
+      const current: Classroom[] = stored ? JSON.parse(stored) : [];
+      const newClass: Classroom = { 
+        ...classroom, 
+        studentIds: classroom.studentIds || [],
+        assignedScenarioIds: classroom.assignedScenarioIds || []
+      };
+      localStorage.setItem(KEYS.CLASSROOMS, JSON.stringify([...current, newClass]));
+    } catch (e) { console.error("Error saving classroom", e); }
+  },
+
+  joinClassroom: (userId: string, inviteCode: string): boolean => {
+    try {
+      const stored = localStorage.getItem(KEYS.CLASSROOMS);
+      const classes: Classroom[] = stored ? JSON.parse(stored) : [];
+      const targetIdx = classes.findIndex(c => c.inviteCode === inviteCode);
+      
+      if (targetIdx !== -1) {
+        if (!classes[targetIdx].studentIds) classes[targetIdx].studentIds = [];
+        if (!classes[targetIdx].studentIds.includes(userId)) {
+          classes[targetIdx].studentIds.push(userId);
+          localStorage.setItem(KEYS.CLASSROOMS, JSON.stringify(classes));
+        }
+        return true;
+      }
+    } catch (e) { console.error(e); }
+    return false;
+  },
+
+  saveClassMessage: (classId: string, message: ClassChatMessage) => {
+    const history = persistenceService.getClassChat(classId);
+    const newHistory = [...history, message].slice(-50);
+    localStorage.setItem(`${KEYS.CLASS_CHAT}${classId}`, JSON.stringify(newHistory));
+  },
+
+  getClassChat: (classId: string): ClassChatMessage[] => {
+    const stored = localStorage.getItem(`${KEYS.CLASS_CHAT}${classId}`);
+    return stored ? JSON.parse(stored) : [];
+  },
+
+  // Scenarios
+  getCustomScenarios: (userId: string): Scenario[] => {
+    const stored = localStorage.getItem(`${KEYS.CUSTOM_SCENARIOS}${userId}`);
+    return stored ? JSON.parse(stored) : [];
+  },
+
+  getScenarioById: (userId: string, scenarioId: string): Scenario | undefined => {
+    const native = SCENARIOS.find(s => s.id === scenarioId);
+    if (native) return native;
+    return persistenceService.getCustomScenarios(userId).find(s => s.id === scenarioId);
+  },
+
+  saveScenarioProgress: (userId: string, scenarioId: string, progress: number) => {
+    localStorage.setItem(`${KEYS.SCENARIO_PROGRESS}${userId}_${scenarioId}`, progress.toString());
   },
 
   getScenarioProgress: (userId: string, scenarioId: string): number => {
@@ -51,60 +178,14 @@ export const persistenceService = {
     return stored ? parseInt(stored, 10) : 0;
   },
 
-  saveScenarioProgress: (userId: string, scenarioId: string, progress: number) => {
-    localStorage.setItem(`${KEYS.SCENARIO_PROGRESS}${userId}_${scenarioId}`, progress.toString());
-  },
-
-  // --- LMS (Classrooms & Reports) ---
-  getClassrooms: (userId: string): Classroom[] => {
-    const stored = localStorage.getItem(`${KEYS.CLASSROOMS}${userId}`);
-    return stored ? JSON.parse(stored) : [];
-  },
-
-  saveClassroom: (classroom: Classroom) => {
-    const current = persistenceService.getClassrooms(classroom.instructorId);
-    localStorage.setItem(`${KEYS.CLASSROOMS}${classroom.instructorId}`, JSON.stringify([...current, classroom]));
-  },
-
-  joinClassroom: (userId: string, inviteCode: string): boolean => {
-    // Procura em todos os registros de turmas de todos os instrutores (simulado para local)
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith(KEYS.CLASSROOMS)) {
-        const classes: Classroom[] = JSON.parse(localStorage.getItem(key) || '[]');
-        const target = classes.find(c => c.inviteCode === inviteCode);
-        if (target) {
-          if (!target.studentIds.includes(userId)) {
-            target.studentIds.push(userId);
-            localStorage.setItem(key, JSON.stringify(classes));
-          }
-          return true;
-        }
-      }
-    }
-    return false;
-  },
-
   saveStudentReport: (report: StudentReport) => {
     const reports = JSON.parse(localStorage.getItem(KEYS.REPORTS) || '[]');
     localStorage.setItem(KEYS.REPORTS, JSON.stringify([...reports, report]));
+    persistenceService.updatePerformanceStats(report.studentId, report);
   },
 
-  getReportsByStudent: (studentId: string): StudentReport[] => {
-    const reports = JSON.parse(localStorage.getItem(KEYS.REPORTS) || '[]');
-    return reports.filter((r: StudentReport) => r.studentId === studentId);
-  },
-
-  getReportsByClass: (studentIds: string[]): StudentReport[] => {
-    const reports = JSON.parse(localStorage.getItem(KEYS.REPORTS) || '[]');
-    return reports.filter((r: StudentReport) => studentIds.includes(r.studentId));
-  },
-
-  // --- Generic ---
-  getScenarioById: (userId: string, scenarioId: string): Scenario | undefined => {
-    const native = SCENARIOS.find(s => s.id === scenarioId);
-    if (native) return native;
-    return persistenceService.getCustomScenarios(userId).find(s => s.id === scenarioId);
+  saveChatHistory: (userId: string, scenarioId: string, messages: ChatMessage[]) => {
+    localStorage.setItem(`${KEYS.CHAT_HISTORY}${userId}_${scenarioId}`, JSON.stringify(messages));
   },
 
   getChatHistory: (userId: string, scenarioId: string): ChatMessage[] | null => {
@@ -112,19 +193,26 @@ export const persistenceService = {
     return stored ? JSON.parse(stored) : null;
   },
 
-  saveChatHistory: (userId: string, scenarioId: string, messages: ChatMessage[]) => {
-    localStorage.setItem(`${KEYS.CHAT_HISTORY}${userId}_${scenarioId}`, JSON.stringify(messages));
+  saveRoomHistory: (userId: string, entry: RoomHistoryEntry) => {
+    const history = persistenceService.getRoomHistory(userId);
+    const filtered = history.filter(h => h.roomId !== entry.roomId);
+    const newHistory = [entry, ...filtered].slice(0, 10);
+    localStorage.setItem(`${KEYS.ROOM_HISTORY}${userId}`, JSON.stringify(newHistory));
+  },
+
+  getRoomHistory: (userId: string): RoomHistoryEntry[] => {
+    const stored = localStorage.getItem(`${KEYS.ROOM_HISTORY}${userId}`);
+    return stored ? JSON.parse(stored) : [];
+  },
+
+  getRoleForRoom: (userId: string, roomId: string): CourtRole | null => {
+    const history = persistenceService.getRoomHistory(userId);
+    const entry = history.find(h => h.roomId === roomId);
+    return entry ? entry.role : null;
   },
 
   resetAll: () => {
-    const prefixes = Object.values(KEYS);
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && prefixes.some(p => key.startsWith(p))) {
-        localStorage.removeItem(key);
-        i--;
-      }
-    }
+    localStorage.clear();
     sessionStorage.clear();
   }
 };
