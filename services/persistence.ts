@@ -44,7 +44,6 @@ export const persistenceService = {
     sessionStorage.removeItem(KEYS.USER);
   },
 
-  // Telemetria de Performance
   trackExerciseTime: (userId: string, minutes: number) => {
     try {
       const perf = persistenceService.getUserPerformance(userId);
@@ -75,7 +74,9 @@ export const persistenceService = {
 
   getUserPerformance: (userId: string): UserPerformance => {
     const stored = localStorage.getItem(`${KEYS.PERFORMANCE}${userId}`);
-    return stored ? JSON.parse(stored) : {
+    if (stored) return JSON.parse(stored);
+    
+    return {
       userId,
       userName: 'Usuário',
       totalExerciseTime: 0,
@@ -88,27 +89,36 @@ export const persistenceService = {
 
   getGlobalRankings: (): UserPerformance[] => {
     const rankings: UserPerformance[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith(KEYS.PERFORMANCE)) {
-        try { rankings.push(JSON.parse(localStorage.getItem(key)!)); } catch(e) {}
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key?.startsWith(KEYS.PERFORMANCE)) {
+          rankings.push(JSON.parse(localStorage.getItem(key)!));
+        }
       }
-    }
+    } catch(e) {}
+
+    // Mock data para preencher se vazio
     if (rankings.length < 3) {
-      rankings.push(
+      const mocks = [
         { userId: 'm1', userName: 'Dra. Beatriz Santos', totalExerciseTime: 850, avgOratory: 94, avgProcedural: 88, avgEvidence: 92, totalSimulations: 45 },
         { userId: 'm2', userName: 'Dr. Marcos Oliveira', totalExerciseTime: 620, avgOratory: 85, avgProcedural: 91, avgEvidence: 84, totalSimulations: 32 },
         { userId: 'm3', userName: 'Dra. Julia Costa', totalExerciseTime: 410, avgOratory: 78, avgProcedural: 72, avgEvidence: 95, totalSimulations: 18 }
-      );
+      ];
+      mocks.forEach(m => {
+        if (!rankings.find(r => r.userId === m.userId)) rankings.push(m);
+      });
     }
-    return rankings.sort((a, b) => (b.avgOratory + b.avgProcedural + b.avgEvidence) - (a.avgOratory + a.avgProcedural + a.avgEvidence));
+    return rankings.sort((a, b) => 
+      ((b.avgOratory + b.avgProcedural + b.avgEvidence)/3) - 
+      ((a.avgOratory + a.avgProcedural + a.avgEvidence)/3)
+    );
   },
 
   getScenarioStats: () => {
     return JSON.parse(localStorage.getItem(KEYS.SCENARIO_STATS) || '{}');
   },
 
-  // Classrooms
   getClassrooms: (userId: string): Classroom[] => {
     const stored = localStorage.getItem(KEYS.CLASSROOMS);
     const allClasses: Classroom[] = stored ? JSON.parse(stored) : [];
@@ -119,13 +129,8 @@ export const persistenceService = {
     try {
       const stored = localStorage.getItem(KEYS.CLASSROOMS);
       const current: Classroom[] = stored ? JSON.parse(stored) : [];
-      const newClass: Classroom = { 
-        ...classroom, 
-        studentIds: classroom.studentIds || [],
-        assignedScenarioIds: classroom.assignedScenarioIds || []
-      };
-      localStorage.setItem(KEYS.CLASSROOMS, JSON.stringify([...current, newClass]));
-    } catch (e) { console.error("Error saving classroom", e); }
+      localStorage.setItem(KEYS.CLASSROOMS, JSON.stringify([...current, classroom]));
+    } catch (e) { }
   },
 
   joinClassroom: (userId: string, inviteCode: string): boolean => {
@@ -142,7 +147,7 @@ export const persistenceService = {
         }
         return true;
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { }
     return false;
   },
 
@@ -157,7 +162,6 @@ export const persistenceService = {
     return stored ? JSON.parse(stored) : [];
   },
 
-  // Scenarios
   getCustomScenarios: (userId: string): Scenario[] => {
     const stored = localStorage.getItem(`${KEYS.CUSTOM_SCENARIOS}${userId}`);
     return stored ? JSON.parse(stored) : [];

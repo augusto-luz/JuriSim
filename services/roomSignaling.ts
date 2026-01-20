@@ -22,15 +22,11 @@ class RoomSignalingService {
   private roomId: string = '';
   private localStream: MediaStream | null = null;
   private localParticipantInfo: Participant | null = null;
-  private retryTimeout: number | null = null;
 
   getPeerId() { return this.peer?.id || ''; }
 
   async connect(roomId: string, user: Participant, isHost: boolean, stream: MediaStream | null) {
-    if (!roomId || roomId.trim() === '') {
-      console.error("[Signaling] RoomID invalid");
-      return;
-    }
+    if (!roomId) return;
 
     this.disconnect();
     this.roomId = roomId;
@@ -39,10 +35,10 @@ class RoomSignalingService {
     this.localParticipantInfo = user;
 
     const cleanRoomId = roomId.replace(/[^a-zA-Z0-9-]/g, '');
-    const myPeerId = isHost ? `jurisim-room-${cleanRoomId}` : undefined;
+    const myPeerId = isHost ? `jurisim-v2-${cleanRoomId}` : undefined;
     
     this.peer = new Peer(myPeerId, {
-      debug: 1, // Reduced debug for production
+      debug: 1,
       config: {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
@@ -52,9 +48,9 @@ class RoomSignalingService {
     });
 
     this.peer.on('open', (id) => {
-      console.log(`[Signaling] Connection Open: ${id}`);
+      console.log(`[Signaling] ID: ${id}`);
       if (!isHost) {
-        this.attemptConnectToHost(`jurisim-room-${cleanRoomId}`, user, 0);
+        this.attemptConnectToHost(`jurisim-v2-${cleanRoomId}`, user, 0);
       } else if (this.localParticipantInfo) {
         this.currentParticipants.set(id, { ...this.localParticipantInfo, id });
       }
@@ -64,10 +60,9 @@ class RoomSignalingService {
     this.peer.on('call', (call) => this.handleIncomingCall(call));
 
     this.peer.on('error', (err: any) => {
-      console.error(`[Signaling] PeerJS Error: ${err.type}`, err);
       if (err.type === 'unavailable-id' && isHost) {
-        // Se o ID do host estiver ocupado, provavelmente é uma aba antiga. Tentamos forçar.
-        setTimeout(() => window.location.reload(), 2000);
+        console.warn("Sala já ativa. Tentando reconectar como participante.");
+        // Não resetamos, permitimos que o erro suba para a UI se necessário
       }
     });
   }
@@ -75,15 +70,14 @@ class RoomSignalingService {
   private attemptConnectToHost(hostId: string, user: Participant, retryCount: number) {
     if (!this.peer || this.peer.destroyed) return;
 
-    console.log(`[Signaling] Connecting to host ${hostId} (Attempt ${retryCount + 1})`);
     const conn = this.peer.connect(hostId, { metadata: user, reliable: true });
 
     const timeout = window.setTimeout(() => {
-      if (!conn.open && retryCount < 5) {
+      if (!conn.open && retryCount < 3) {
         conn.close();
         this.attemptConnectToHost(hostId, user, retryCount + 1);
       }
-    }, 3000);
+    }, 4000);
 
     conn.on('open', () => {
       clearTimeout(timeout);
@@ -92,10 +86,6 @@ class RoomSignalingService {
     });
 
     conn.on('data', (data: any) => this.handleMessage(data));
-    
-    conn.on('error', (err) => {
-      console.warn("[Signaling] Connection to host failed, retrying...", err);
-    });
   }
 
   private handleDataConnection(conn: DataConnection) {
@@ -155,7 +145,6 @@ class RoomSignalingService {
     this.connections.delete(id);
     this.currentParticipants.delete(id);
     this.notifyListeners({ type: 'LEAVE', payload: { id } });
-    if (this.isHost) this.broadcast({ type: 'LEAVE', payload: { id } });
   }
 
   private broadcastExcept(data: any, skipId: string) {
@@ -168,7 +157,7 @@ class RoomSignalingService {
       this.connections.forEach(conn => conn.open && conn.send(event));
     } else {
       const cleanRoomId = this.roomId.replace(/[^a-zA-Z0-9-]/g, '');
-      const hostConn = this.connections.get(`jurisim-room-${cleanRoomId}`);
+      const hostConn = this.connections.get(`jurisim-v2-${cleanRoomId}`);
       if (hostConn?.open) hostConn.send(event);
     }
   }
@@ -177,18 +166,11 @@ class RoomSignalingService {
     if (this.peer) this.broadcast({ type: 'UPDATE', payload: { ...participant, id: this.peer.id } });
   }
 
-  sendAudioLevel(id: string, level: number) {
-     if (this.peer) this.broadcast({ type: 'AUDIO_LEVEL', payload: { id: this.peer.id, level } });
-  }
-
   sendHearingStatus(status: 'waiting' | 'running' | 'ended', startTime?: number) {
     this.broadcast({ type: 'HEARING_STATUS', payload: { status, startTime } });
   }
 
-  forceMuteAll() { this.broadcast({ type: 'MUTE_FORCE', payload: {} }); }
-
   disconnect() {
-    if (this.retryTimeout) clearTimeout(this.retryTimeout);
     if (this.peer) { 
       this.peer.destroy(); 
       this.peer = null; 

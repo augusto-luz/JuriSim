@@ -1,3 +1,4 @@
+
 import { Scenario, UserRole } from './types';
 
 export const MOCK_USER = {
@@ -38,7 +39,7 @@ export const SCENARIOS: Scenario[] = [
     description: 'Audiência de instrução e julgamento de réu primário acusado de roubo.',
     difficulty: 'Intermediário',
     area: 'Penal',
-    progress: 35,
+    progress: 0,
     facts: 'O Réu, Carlos, foi detido em flagrante portando a bolsa da vítima. A vítima alega que foi abordada mediante grave ameaça com uso de faca. O Réu nega o uso de arma e alega que apenas "puxou" a bolsa (furto por arrebatamento). A faca não foi encontrada.',
     evidence: [
       'Boletim de Ocorrência.',
@@ -63,7 +64,7 @@ export const SCENARIOS: Scenario[] = [
     description: 'Processo trabalhista complexo envolvendo múltiplas testemunhas.',
     difficulty: 'Avançado',
     area: 'Trabalhista',
-    progress: 10,
+    progress: 0,
     facts: 'A Reclamante alega que seu superior hierárquico a expunha a situações humilhantes, chamando-a de "incompetente" na frente dos colegas e estipulando metas inatingíveis. Pede Rescisão Indireta e Danos Morais. A empresa nega e alega baixa produtividade.',
     evidence: [
       'Emails com cobranças de metas fora do horário.',
@@ -86,23 +87,18 @@ export const SCENARIOS: Scenario[] = [
 export const DYNAMIC_HEARING_PROMPT = `
 Você é o MOTOR DE SIMULAÇÃO JURÍDICA (JuriSim Engine).
 Sua função é controlar DOIS personagens simultaneamente nesta audiência:
-1. O JUIZ DE DIREITO (Presidente da sessão, formal, imparcial, decisivo).
-2. O ADVOGADO DA PARTE CONTRÁRIA (Oponente do usuário, combativo, técnico, levanta objeções).
+1. O JUIZ DE DIREITO (Presidente da sessão, formal, imparcial, decisivo, utiliza termos como "Doutor", "Vossa Excelência" se referido, mantém a ordem).
+2. O ADVOGADO DA PARTE CONTRÁRIA (Oponente do usuário, técnico, atento a contradições, levanta objeções baseadas no CPC/CPP).
 
 O usuário é o ADVOGADO da outra parte.
 
-REGRAS DE INTERAÇÃO (CRUCIAL):
-- Você deve sempre responder mantendo o fluxo da audiência.
-- Se o Usuário terminar sua fala, o JUIZ deve intervir.
-- Se o JUIZ passar a palavra para a Parte Contrária, VOCÊ MESMO deve escrever a fala da Parte Contrária NA MESMA RESPOSTA. Não espere o usuário.
-- Se a Parte Contrária fizer uma objeção ou pergunta, o JUIZ deve intervir logo em seguida se necessário.
-- Use DUAS quebras de linha (\n\n) para separar claramente as falas.
+REGRAS DE INTERAÇÃO:
+- Se o Usuário terminar sua fala, o JUIZ deve intervir para dar andamento ou questionar.
+- Se o JUIZ passar a palavra para a Parte Contrária, VOCÊ MESMO escreve a fala da Parte Contrária na mesma resposta.
+- Utilize linguagem jurídica formal (jurisprudência, ritos, artigos).
+- Seja combativo. Se o usuário cometer um erro processual, a Parte Contrária deve arguir e o Juiz deve decidir.
 
-FORMATO DE RESPOSTA OBRIGATÓRIO:
-[JUIZ]: Texto do juiz...
-
-[PARTE CONTRÁRIA]: Texto do advogado oponente...
-
-OBJETIVO:
-Pressione o usuário. Se ele demorar ou for vago, o Juiz deve cobrar celeridade e a Parte Contrária deve explorar a fraqueza.
+FORMATO:
+[JUIZ]: Texto...
+[PARTE CONTRÁRIA]: Texto...
 `;
