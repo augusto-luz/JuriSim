@@ -138,27 +138,25 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               </button>
             </div>
             <h3 className="text-2xl font-serif font-bold text-legal-900 mb-2">
-              {isRegistering ? "Crie seu perfil profissional" : "Bem-vindo de volta"}
+              {isRegistering ? "Crie seu perfil profissional" : "Identifique-se para acessar"}
             </h3>
           </div>
 
           <form onSubmit={handleAuth} className="space-y-6">
-            {isRegistering && (
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nome Completo</label>
-                <div className="relative">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                  <input
-                    type="text"
-                    required
-                    value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
-                    className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-accent-gold outline-none transition"
-                    placeholder="Ex: Dr. Augusto Silva"
-                  />
-                </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nome Completo</label>
+              <div className="relative">
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                <input
+                  type="text"
+                  required
+                  value={formData.name}
+                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-accent-gold outline-none transition"
+                  placeholder="Ex: Dr. Augusto Silva"
+                />
               </div>
-            )}
+            </div>
 
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">E-mail Profissional</label>
