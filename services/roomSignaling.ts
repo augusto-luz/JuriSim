@@ -37,14 +37,16 @@ class RoomSignalingService {
     this.localParticipantInfo = user;
 
     const cleanRoomId = roomId.replace(/[^a-zA-Z0-9-]/g, '');
-    const myPeerId = isHost ? `jurisim-v2-${cleanRoomId}` : undefined;
+    const myPeerId = isHost ? `juri-v3-${cleanRoomId}` : undefined;
     
-    // Forçamos secure: true se estivermos em HTTPS (Vercel) para evitar aviso de link não confiável
+    // Rigoroso: Força conexão segura (WSS) se estiver no Vercel (HTTPS)
     const isSecure = window.location.protocol === 'https:';
 
     this.peer = new Peer(myPeerId, {
       debug: 1,
       secure: isSecure,
+      host: '0.peerjs.com', // Uso do servidor padrão da comunidade para maior compatibilidade
+      port: 443,
       config: {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
@@ -54,9 +56,9 @@ class RoomSignalingService {
     });
 
     this.peer.on('open', (id) => {
-      console.debug(`[Signaling] Conectado via ${isSecure ? 'SSL' : 'HTTP'}. ID: ${id}`);
+      console.debug(`[Signaling] Sala conectada via ${isSecure ? 'WSS' : 'WS'}. PeerID: ${id}`);
       if (!isHost) {
-        this.attemptConnectToHost(`jurisim-v2-${cleanRoomId}`, user, 0);
+        this.attemptConnectToHost(`juri-v3-${cleanRoomId}`, user, 0);
       } else if (this.localParticipantInfo) {
         this.currentParticipants.set(id, { ...this.localParticipantInfo, id });
       }
@@ -66,14 +68,13 @@ class RoomSignalingService {
     this.peer.on('call', (call) => this.handleIncomingCall(call));
 
     this.peer.on('error', (err: any) => {
-      console.error("[Signaling] Erro de rede:", err.type);
-      
-      if (err.type === 'unavailable-id' && isHost) {
-        this.notifyListeners({ type: 'ERROR', payload: 'Este ID de sala já está em uso.' });
-      } else if (err.type === 'peer-unavailable') {
-        this.notifyListeners({ type: 'ERROR', payload: 'Tribunal Virtual não encontrado.' });
+      console.error("[Signaling] Erro:", err.type);
+      if (err.type === 'peer-unavailable') {
+        this.notifyListeners({ type: 'ERROR', payload: 'Esta sala não foi encontrada ou o anfitrião desconectou.' });
+      } else if (err.type === 'unavailable-id') {
+        this.notifyListeners({ type: 'ERROR', payload: 'Conflito de ID: Esta sala já está sendo gerida.' });
       } else {
-        this.notifyListeners({ type: 'ERROR', payload: `Erro técnico: ${err.type}` });
+        this.notifyListeners({ type: 'ERROR', payload: `Falha técnica de rede: ${err.type}` });
       }
     });
   }
@@ -84,15 +85,11 @@ class RoomSignalingService {
     const conn = this.peer.connect(hostId, { metadata: user, reliable: true });
 
     const timeout = window.setTimeout(() => {
-      if (!conn.open) {
+      if (!conn.open && retryCount < 2) {
         conn.close();
-        if (retryCount < 2) {
-          this.attemptConnectToHost(hostId, user, retryCount + 1);
-        } else {
-          this.notifyListeners({ type: 'ERROR', payload: 'Falha ao ingressar na sessão do anfitrião.' });
-        }
+        this.attemptConnectToHost(hostId, user, retryCount + 1);
       }
-    }, 5000);
+    }, 4000);
 
     conn.on('open', () => {
       clearTimeout(timeout);
@@ -180,7 +177,7 @@ class RoomSignalingService {
       this.connections.forEach(conn => conn.open && conn.send(event));
     } else {
       const cleanRoomId = this.roomId.replace(/[^a-zA-Z0-9-]/g, '');
-      const hostId = `jurisim-v2-${cleanRoomId}`;
+      const hostId = `juri-v3-${cleanRoomId}`;
       const hostConn = this.connections.get(hostId);
       if (hostConn?.open) hostConn.send(event);
     }

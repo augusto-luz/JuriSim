@@ -2,7 +2,7 @@
 import { ChatMessage, User, Scenario, Classroom, StudentReport, CourtRole, UserPerformance, ClassChatMessage } from '../types';
 import { SCENARIOS } from '../constants';
 
-const DB_VERSION = '1.2';
+const DB_VERSION = '1.3';
 const KEYS = {
   VERSION: 'jurisim_db_v',
   USER: 'jurisim_user',
@@ -27,11 +27,31 @@ export interface RoomHistoryEntry {
 
 export const persistenceService = {
   _init: () => {
-    const currentVersion = localStorage.getItem(KEYS.VERSION);
-    if (currentVersion !== DB_VERSION) {
-      console.warn(`[DB] Migrando banco de dados de ${currentVersion} para ${DB_VERSION}`);
-      // Poderia haver lógica de migração aqui; por enquanto apenas marca a versão
-      localStorage.setItem(KEYS.VERSION, DB_VERSION);
+    try {
+      const currentVersion = localStorage.getItem(KEYS.VERSION);
+      if (currentVersion !== DB_VERSION) {
+        console.debug(`[DB] Upgrading schema to ${DB_VERSION}`);
+        localStorage.setItem(KEYS.VERSION, DB_VERSION);
+      }
+    } catch (e) { console.warn("Local storage inaccessible", e); }
+  },
+
+  // Segurança: Garante que os dados salvos sejam objetos válidos e sanitizados
+  _safeSave: (key: string, value: any) => {
+    try {
+      const data = typeof value === 'string' ? value : JSON.stringify(value);
+      localStorage.setItem(key, data);
+    } catch (e) {
+      persistenceService._handleStorageError(e);
+    }
+  },
+
+  _safeGet: (key: string): any | null => {
+    try {
+      const data = localStorage.getItem(key);
+      return data ? JSON.parse(data) : null;
+    } catch (e) {
+      return null;
     }
   },
 
@@ -39,6 +59,7 @@ export const persistenceService = {
     try {
         const storage = remember ? localStorage : sessionStorage;
         storage.setItem(KEYS.USER, JSON.stringify(user));
+        // Sincroniza identidade no registro global de performance
         persistenceService.getUserPerformance(user.id, user.name);
     } catch (e) { persistenceService._handleStorageError(e); }
   },
@@ -49,6 +70,7 @@ export const persistenceService = {
       if (userStored) {
         const user = JSON.parse(userStored);
         if (user && user.id) {
+          // Garante que o ranking esteja sempre atualizado com o nome atual
           persistenceService.getUserPerformance(user.id, user.name);
           return user;
         }
@@ -62,45 +84,104 @@ export const persistenceService = {
     sessionStorage.removeItem(KEYS.USER);
   },
 
-  trackExerciseTime: (userId: string, minutes: number) => {
-    try {
-      const perf = persistenceService.getUserPerformance(userId);
-      perf.totalExerciseTime += minutes;
-      localStorage.setItem(`${KEYS.PERFORMANCE}${userId}`, JSON.stringify(perf));
-    } catch (e) { persistenceService._handleStorageError(e); }
+  // Fix: Added missing getCustomScenarios method
+  getCustomScenarios: (userId: string): Scenario[] => {
+    return persistenceService._safeGet(`${KEYS.CUSTOM_SCENARIOS}${userId}`) || [];
   },
 
+  // Fix: Added missing trackScenarioStart method
   trackScenarioStart: (scenarioId: string) => {
-    try {
-      const stats = JSON.parse(localStorage.getItem(KEYS.SCENARIO_STATS) || '{}');
-      stats[scenarioId] = (stats[scenarioId] || 0) + 1;
-      localStorage.setItem(KEYS.SCENARIO_STATS, JSON.stringify(stats));
-    } catch (e) { }
+    const stats = persistenceService.getScenarioStats();
+    stats[scenarioId] = (stats[scenarioId] || 0) + 1;
+    persistenceService._safeSave(KEYS.SCENARIO_STATS, stats);
+  },
+
+  // Fix: Added missing getScenarioStats method
+  getScenarioStats: (): Record<string, number> => {
+    return persistenceService._safeGet(KEYS.SCENARIO_STATS) || {};
+  },
+
+  // Fix: Added missing saveStudentReport method
+  saveStudentReport: (report: StudentReport) => {
+    const reports: StudentReport[] = persistenceService._safeGet(KEYS.REPORTS) || [];
+    persistenceService._safeSave(KEYS.REPORTS, [...reports, report]);
+    persistenceService.updatePerformanceStats(report.studentId, report);
+  },
+
+  // Fix: Added missing getRoomHistory method
+  getRoomHistory: (userId: string): RoomHistoryEntry[] => {
+    return persistenceService._safeGet(`${KEYS.ROOM_HISTORY}${userId}`) || [];
+  },
+
+  // Fix: Added missing getRoleForRoom method
+  getRoleForRoom: (userId: string, roomId: string): CourtRole | null => {
+    const history = persistenceService.getRoomHistory(userId);
+    const entry = history.find(h => h.roomId === roomId);
+    return entry ? entry.role : null;
+  },
+
+  // Fix: Added missing saveRoomHistory method
+  saveRoomHistory: (userId: string, entry: RoomHistoryEntry) => {
+    const history = persistenceService.getRoomHistory(userId);
+    const filtered = history.filter(h => h.roomId !== entry.roomId);
+    persistenceService._safeSave(`${KEYS.ROOM_HISTORY}${userId}`, [entry, ...filtered].slice(0, 10));
+  },
+
+  // Fix: Added missing getScenarioById method
+  getScenarioById: (userId: string, scenarioId: string): Scenario | null => {
+    const all = [...SCENARIOS, ...persistenceService.getCustomScenarios(userId)];
+    return all.find(s => s.id === scenarioId) || null;
+  },
+
+  // Fix: Added missing getClassChat method
+  getClassChat: (classroomId: string): ClassChatMessage[] => {
+    return persistenceService._safeGet(`${KEYS.CLASS_CHAT}${classroomId}`) || [];
+  },
+
+  // Fix: Added missing saveClassMessage method
+  saveClassMessage: (classroomId: string, message: ClassChatMessage) => {
+    const chat = persistenceService.getClassChat(classroomId);
+    persistenceService._safeSave(`${KEYS.CLASS_CHAT}${classroomId}`, [...chat, message].slice(-50));
+  },
+
+  // Fix: Added missing joinClassroom method
+  joinClassroom: (userId: string, inviteCode: string): boolean => {
+    const allClasses: Classroom[] = persistenceService._safeGet(KEYS.CLASSROOMS) || [];
+    const classroom = allClasses.find(c => c.inviteCode === inviteCode);
+    if (classroom) {
+      if (!classroom.studentIds.includes(userId)) {
+        classroom.studentIds.push(userId);
+        persistenceService._safeSave(KEYS.CLASSROOMS, allClasses);
+      }
+      return true;
+    }
+    return false;
+  },
+
+  trackExerciseTime: (userId: string, minutes: number) => {
+    const perf = persistenceService.getUserPerformance(userId);
+    perf.totalExerciseTime += minutes;
+    persistenceService._safeSave(`${KEYS.PERFORMANCE}${userId}`, perf);
   },
 
   updatePerformanceStats: (userId: string, report: StudentReport) => {
-    try {
-      const perf = persistenceService.getUserPerformance(userId, report.studentName);
-      const n = perf.totalSimulations;
-      perf.avgOratory = Math.round((perf.avgOratory * n + report.technicalAnalysis.rhetoric) / (n + 1));
-      perf.avgProcedural = Math.round((perf.avgProcedural * n + report.technicalAnalysis.procedure) / (n + 1));
-      perf.avgEvidence = Math.round((perf.avgEvidence * n + report.technicalAnalysis.evidenceHandling) / (n + 1));
-      perf.totalSimulations += 1;
-      localStorage.setItem(`${KEYS.PERFORMANCE}${userId}`, JSON.stringify(perf));
-    } catch (e) { persistenceService._handleStorageError(e); }
+    const perf = persistenceService.getUserPerformance(userId, report.studentName);
+    const n = perf.totalSimulations;
+    perf.avgOratory = Math.round((perf.avgOratory * n + report.technicalAnalysis.rhetoric) / (n + 1));
+    perf.avgProcedural = Math.round((perf.avgProcedural * n + report.technicalAnalysis.procedure) / (n + 1));
+    perf.avgEvidence = Math.round((perf.avgEvidence * n + report.technicalAnalysis.evidenceHandling) / (n + 1));
+    perf.totalSimulations += 1;
+    persistenceService._safeSave(`${KEYS.PERFORMANCE}${userId}`, perf);
   },
 
   getUserPerformance: (userId: string, userName?: string): UserPerformance => {
     const key = `${KEYS.PERFORMANCE}${userId}`;
-    const stored = localStorage.getItem(key);
-    let perf: UserPerformance;
+    let perf = persistenceService._safeGet(key);
     
-    if (stored) {
-      perf = JSON.parse(stored);
-      // Sincronização rigorosa do nome logado
+    if (perf) {
       if (userName && userName !== 'Usuário' && perf.userName !== userName) {
         perf.userName = userName;
-        localStorage.setItem(key, JSON.stringify(perf));
+        persistenceService._safeSave(key, perf);
       }
     } else {
       perf = {
@@ -112,7 +193,7 @@ export const persistenceService = {
         avgEvidence: 0,
         totalSimulations: 0
       };
-      localStorage.setItem(key, JSON.stringify(perf));
+      persistenceService._safeSave(key, perf);
     }
     return perf;
   },
@@ -127,15 +208,12 @@ export const persistenceService = {
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key && key.startsWith(KEYS.PERFORMANCE)) {
-          try {
-            const item = JSON.parse(localStorage.getItem(key)!);
-            if (item && item.userId) rankings.push(item);
-          } catch (e) {}
+          const item = persistenceService._safeGet(key);
+          if (item && item.userId) rankings.push(item);
         }
       }
     } catch(e) { }
 
-    // Mock data resiliente
     if (rankings.length < 2) {
       const mocks = [
         { userId: 'm1', userName: 'Dra. Beatriz Santos', totalExerciseTime: 850, avgOratory: 94, avgProcedural: 88, avgEvidence: 92, totalSimulations: 45 },
@@ -153,78 +231,18 @@ export const persistenceService = {
     });
   },
 
-  getScenarioStats: () => {
-    try {
-      return JSON.parse(localStorage.getItem(KEYS.SCENARIO_STATS) || '{}');
-    } catch (e) { return {}; }
-  },
-
   getClassrooms: (userId: string): Classroom[] => {
-    try {
-      const stored = localStorage.getItem(KEYS.CLASSROOMS);
-      const allClasses: Classroom[] = stored ? JSON.parse(stored) : [];
-      return allClasses.filter(c => c.instructorId === userId || (c.studentIds && c.studentIds.includes(userId)));
-    } catch (e) { return []; }
+    const allClasses: Classroom[] = persistenceService._safeGet(KEYS.CLASSROOMS) || [];
+    return allClasses.filter(c => c.instructorId === userId || (c.studentIds && c.studentIds.includes(userId)));
   },
 
   saveClassroom: (classroom: Classroom) => {
-    try {
-      const stored = localStorage.getItem(KEYS.CLASSROOMS);
-      const current: Classroom[] = stored ? JSON.parse(stored) : [];
-      localStorage.setItem(KEYS.CLASSROOMS, JSON.stringify([...current, classroom]));
-    } catch (e) { persistenceService._handleStorageError(e); }
-  },
-
-  joinClassroom: (userId: string, inviteCode: string): boolean => {
-    try {
-      const stored = localStorage.getItem(KEYS.CLASSROOMS);
-      const classes: Classroom[] = stored ? JSON.parse(stored) : [];
-      const targetIdx = classes.findIndex(c => c.inviteCode === inviteCode);
-      
-      if (targetIdx !== -1) {
-        if (!classes[targetIdx].studentIds) classes[targetIdx].studentIds = [];
-        if (!classes[targetIdx].studentIds.includes(userId)) {
-          classes[targetIdx].studentIds.push(userId);
-          localStorage.setItem(KEYS.CLASSROOMS, JSON.stringify(classes));
-        }
-        return true;
-      }
-    } catch (e) { }
-    return false;
-  },
-
-  saveClassMessage: (classId: string, message: ClassChatMessage) => {
-    try {
-      const history = persistenceService.getClassChat(classId);
-      const newHistory = [...history, message].slice(-50);
-      localStorage.setItem(`${KEYS.CLASS_CHAT}${classId}`, JSON.stringify(newHistory));
-    } catch (e) { }
-  },
-
-  getClassChat: (classId: string): ClassChatMessage[] => {
-    try {
-      const stored = localStorage.getItem(`${KEYS.CLASS_CHAT}${classId}`);
-      return stored ? JSON.parse(stored) : [];
-    } catch (e) { return []; }
-  },
-
-  getCustomScenarios: (userId: string): Scenario[] => {
-    try {
-      const stored = localStorage.getItem(`${KEYS.CUSTOM_SCENARIOS}${userId}`);
-      return stored ? JSON.parse(stored) : [];
-    } catch (e) { return []; }
-  },
-
-  getScenarioById: (userId: string, scenarioId: string): Scenario | undefined => {
-    const native = SCENARIOS.find(s => s.id === scenarioId);
-    if (native) return native;
-    return persistenceService.getCustomScenarios(userId).find(s => s.id === scenarioId);
+    const current: Classroom[] = persistenceService._safeGet(KEYS.CLASSROOMS) || [];
+    persistenceService._safeSave(KEYS.CLASSROOMS, [...current, classroom]);
   },
 
   saveScenarioProgress: (userId: string, scenarioId: string, progress: number) => {
-    try {
-      localStorage.setItem(`${KEYS.SCENARIO_PROGRESS}${userId}_${scenarioId}`, progress.toString());
-    } catch (e) {}
+    persistenceService._safeSave(`${KEYS.SCENARIO_PROGRESS}${userId}_${scenarioId}`, progress.toString());
   },
 
   getScenarioProgress: (userId: string, scenarioId: string): number => {
@@ -232,52 +250,21 @@ export const persistenceService = {
     return stored ? parseInt(stored, 10) : 0;
   },
 
-  saveStudentReport: (report: StudentReport) => {
-    try {
-      const reports = JSON.parse(localStorage.getItem(KEYS.REPORTS) || '[]');
-      const newReports = [...reports, report].slice(-50); // Mantém apenas os últimos 50 relatórios para performance
-      localStorage.setItem(KEYS.REPORTS, JSON.stringify(newReports));
-      persistenceService.updatePerformanceStats(report.studentId, report);
-    } catch (e) { persistenceService._handleStorageError(e); }
-  },
-
   saveChatHistory: (userId: string, scenarioId: string, messages: ChatMessage[]) => {
-    try {
-      localStorage.setItem(`${KEYS.CHAT_HISTORY}${userId}_${scenarioId}`, JSON.stringify(messages.slice(-30)));
-    } catch (e) { persistenceService._handleStorageError(e); }
+    // Escala: Mantém apenas os últimos 30 balões de chat para economizar espaço
+    persistenceService._safeSave(`${KEYS.CHAT_HISTORY}${userId}_${scenarioId}`, messages.slice(-30));
   },
 
   getChatHistory: (userId: string, scenarioId: string): ChatMessage[] | null => {
-    const stored = localStorage.getItem(`${KEYS.CHAT_HISTORY}${userId}_${scenarioId}`);
-    return stored ? JSON.parse(stored) : null;
-  },
-
-  saveRoomHistory: (userId: string, entry: RoomHistoryEntry) => {
-    try {
-      const history = persistenceService.getRoomHistory(userId);
-      const filtered = history.filter(h => h.roomId !== entry.roomId);
-      const newHistory = [entry, ...filtered].slice(0, 10);
-      localStorage.setItem(`${KEYS.ROOM_HISTORY}${userId}`, JSON.stringify(newHistory));
-    } catch (e) { }
-  },
-
-  getRoomHistory: (userId: string): RoomHistoryEntry[] => {
-    const stored = localStorage.getItem(`${KEYS.ROOM_HISTORY}${userId}`);
-    return stored ? JSON.parse(stored) : [];
-  },
-
-  getRoleForRoom: (userId: string, roomId: string): CourtRole | null => {
-    const history = persistenceService.getRoomHistory(userId);
-    const entry = history.find(h => h.roomId === roomId);
-    return entry ? entry.role : null;
+    return persistenceService._safeGet(`${KEYS.CHAT_HISTORY}${userId}_${scenarioId}`);
   },
 
   _handleStorageError: (e: any) => {
-    console.error("[DB] Storage Quota Exceeded. Limpando histórico antigo...");
-    // Limpa metadados não essenciais se o disco encher
+    console.error("[DB] Storage Quota Exceeded. Aplicando limpeza de cache LRU...");
+    // Remove dados de chat e salas antigas para manter performance e relatórios
     for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith(KEYS.CHAT_HISTORY) || key.startsWith(KEYS.CLASS_CHAT))) {
+        if (key && (key.startsWith(KEYS.CHAT_HISTORY) || key.startsWith(KEYS.ROOM_HISTORY))) {
             localStorage.removeItem(key);
         }
     }

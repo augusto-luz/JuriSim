@@ -5,11 +5,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>JuriSim | Plataforma de Simulação Jurídica</title>
-    <meta name="description" content="Simulação de audiências com IA e tribunal virtual para treinamento jurídico." />
+    <meta name="description" content="Simulação de audiências com IA e tribunal virtual para treinamento jurídico profissional." />
     <meta name="theme-color" content="#102a43" />
     
-    <!-- Content Security Policy para permitir WebRTC e Google Fonts com segurança -->
-    <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
+    <!-- CSP Robusta para WebRTC e HTTPS Seguro -->
+    <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests; block-all-mixed-content;">
     
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -47,6 +47,7 @@
       body {
         background-color: #f8fafc;
         -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
       }
       .custom-scrollbar::-webkit-scrollbar {
         width: 6px;
@@ -62,6 +63,8 @@
       .custom-scrollbar::-webkit-scrollbar-thumb:hover {
         background: #64748b; 
       }
+      /* Previne flashes brancos no carregamento */
+      #root { min-height: 100vh; }
     </style>
   <script type="importmap">
 {
@@ -82,5 +85,11 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
+    <script>
+      // Redirecionamento automático de WWW para Não-WWW para evitar erro de SSL na Vercel
+      if (window.location.hostname.startsWith('www.')) {
+        window.location.replace(window.location.href.replace('www.', ''));
+      }
+    </script>
   </body>
 </html>
