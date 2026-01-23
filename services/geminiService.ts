@@ -2,6 +2,10 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { ChatMessage, StudentReport } from "../types";
 
+const cleanJsonResponse = (text: string): string => {
+  return text.replace(/```json/g, '').replace(/```/g, '').trim();
+};
+
 export const generateCharacterResponse = async (
   characterName: string,
   systemInstruction: string,
@@ -9,7 +13,6 @@ export const generateCharacterResponse = async (
   userMessage: string
 ): Promise<string> => {
   try {
-    // Inicialização dentro da função para garantir o uso da API_KEY atualizada
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     const historyFormatted = history.map(h => ({
@@ -20,14 +23,13 @@ export const generateCharacterResponse = async (
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: [
-        ...historyFormatted.slice(-12),
+        ...historyFormatted.slice(-10),
         { role: 'user', parts: [{ text: userMessage }] }
       ],
       config: {
         systemInstruction,
         temperature: 0.7,
         topP: 0.95,
-        // Adicionando um pequeno budget de pensamento para respostas mais jurídicas
         thinkingConfig: { thinkingBudget: 1024 }
       }
     });
@@ -35,7 +37,7 @@ export const generateCharacterResponse = async (
     return response.text || "(O tribunal permanece em silêncio)";
   } catch (error) {
     console.error("Gemini Error:", error);
-    return "Ocorreu um erro na conexão com o Tribunal Virtual. Por favor, verifique sua conexão ou tente novamente.";
+    return "Ocorreu um erro na conexão com o Tribunal Virtual. Por favor, tente novamente.";
   }
 };
 
@@ -51,33 +53,33 @@ export const generateLegalEvaluation = async (
       model: 'gemini-3-flash-preview',
       contents: `Analise a seguinte transcrição de audiência simulada para o caso "${scenarioTitle}":\n\n${chatTranscript}`,
       config: {
-        systemInstruction: "Você é um Corregedor de Justiça altamente rigoroso avaliando o desempenho de um advogado. Analise técnica processual, oratória e uso de provas.",
+        systemInstruction: "Você é um Corregedor de Justiça avaliando o desempenho técnico de um advogado. Retorne APENAS um objeto JSON válido.",
         responseMimeType: "application/json",
         thinkingConfig: { thinkingBudget: 2048 },
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            score: { type: Type.NUMBER, description: "Nota de 0 a 100" },
-            feedback: { type: Type.STRING, description: "Feedback qualitativo técnico e direto" },
-            rhetoric: { type: Type.NUMBER, description: "Nota de 0 a 100 para oratória" },
-            procedure: { type: Type.NUMBER, description: "Nota de 0 a 100 para rito processual" },
-            evidence: { type: Type.NUMBER, description: "Nota de 0 a 100 para uso de provas" }
+            score: { type: Type.NUMBER },
+            feedback: { type: Type.STRING },
+            rhetoric: { type: Type.NUMBER },
+            procedure: { type: Type.NUMBER },
+            evidence: { type: Type.NUMBER }
           },
           required: ["score", "feedback", "rhetoric", "procedure", "evidence"]
         }
       }
     });
 
-    const result = response.text;
+    const result = cleanJsonResponse(response.text);
     return JSON.parse(result || "{}");
   } catch (error) {
     console.error("Evaluation Error:", error);
     return { 
-      score: 0, 
-      feedback: "Erro crítico na análise. A audiência pode ter sido muito curta ou conter conteúdo inadequado.", 
-      rhetoric: 0, 
-      procedure: 0, 
-      evidence: 0 
+      score: 50, 
+      feedback: "Falha técnica na geração do relatório. Tente uma sessão mais longa.", 
+      rhetoric: 50, 
+      procedure: 50, 
+      evidence: 50 
     };
   }
 };
