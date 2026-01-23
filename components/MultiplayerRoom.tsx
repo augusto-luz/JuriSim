@@ -10,7 +10,7 @@ import {
   Edit3, Check, Info, Copy, CheckCircle,
   Play, Square, AlertOctagon,
   User as UserIcon,
-  Share2, ArrowLeftCircle, AlertCircle
+  Share2, ArrowLeftCircle, AlertCircle, Loader2
 } from 'lucide-react';
 import { persistenceService } from '../services/persistence';
 
@@ -88,6 +88,7 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
   const [isInWaitingRoom, setIsInWaitingRoom] = useState(currentUserRole === CourtRole.WITNESS);
   const [hearingStatus, setHearingStatus] = useState<'waiting' | 'running' | 'ended'>('waiting');
   const [error, setError] = useState<string | null>(null);
+  const [retryMessage, setRetryMessage] = useState<string | null>(null);
   const sessionStartRef = useRef<number>(Date.now());
 
   const localUser = useMemo<Participant>(() => ({
@@ -102,35 +103,60 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
 
   useEffect(() => {
     let mounted = true;
+    let streamToCleanup: MediaStream | null = null;
+
     async function init() {
       if (!roomId) return;
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        streamToCleanup = stream;
         if (mounted) {
           setLocalStream(stream);
           roomSignaling.connect(roomId, localUser, isHost, stream);
+        } else {
+          // Se o componente for desmontado enquanto a permissão era processada
+          stream.getTracks().forEach(t => t.stop());
         }
       } catch (e) {
         if (mounted) roomSignaling.connect(roomId, localUser, isHost, null);
       }
     }
     init();
+
     return () => { 
       mounted = false; 
-      // Gravar tempo de exercício ao sair
       const diff = Math.floor((Date.now() - sessionStartRef.current) / 60000);
       if (diff >= 1) persistenceService.trackExerciseTime(user.id, diff);
+      
+      // CRITICAL: Stop all camera and mic tracks when exiting the room
+      if (streamToCleanup) {
+        streamToCleanup.getTracks().forEach(track => {
+          track.stop();
+          console.debug(`[Media] Track ${track.kind} parado.`);
+        });
+      }
+      
       roomSignaling.disconnect(); 
     };
   }, []);
 
   useEffect(() => {
     const unsub = roomSignaling.subscribe((event: SignalingEvent) => {
+      if (event.type === 'RETRYING') {
+        setRetryMessage(event.payload);
+        return;
+      }
+
       if (event.type === 'ERROR') {
         setError(event.payload);
+        setRetryMessage(null);
         return;
       }
       
+      if (event.type === 'JOIN' || event.type === 'SYNC_USERS') {
+        setRetryMessage(null);
+      }
+
       if (event.type === 'UPDATE' && event.payload.id === roomSignaling.getPeerId() && event.payload.status === 'active') {
         setIsInWaitingRoom(false);
       }
@@ -186,16 +212,20 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
     </div>
   );
 
-  if (hearingStatus === 'ended') return (
-    <div className="h-full bg-slate-950 flex flex-col items-center justify-center text-white">
-      <Gavel size={64} className="text-accent-gold mb-4"/>
-      <h2 className="text-3xl font-serif font-bold">Audiência Encerrada</h2>
-      <button onClick={onExit} className="mt-8 px-10 py-3 bg-white text-slate-900 rounded-xl font-bold">Sair do Tribunal</button>
-    </div>
-  );
-
   return (
-    <div className="h-full bg-slate-950 flex flex-col overflow-hidden text-white">
+    <div className="h-full bg-slate-950 flex flex-col overflow-hidden text-white relative">
+      
+      {retryMessage && (
+        <div className="absolute inset-0 z-[100] bg-slate-900/90 flex flex-col items-center justify-center p-8 text-center backdrop-blur-md">
+           <div className="max-w-md bg-slate-800 p-10 rounded-[2.5rem] border border-white/5 shadow-2xl flex flex-col items-center">
+              <Loader2 size={48} className="text-accent-gold mb-6 animate-spin"/>
+              <h3 className="text-xl font-serif font-bold mb-4">Conectando ao Tribunal...</h3>
+              <p className="text-slate-400 text-sm mb-8 leading-relaxed italic">"{retryMessage}"</p>
+              <button onClick={onExit} className="text-red-400 text-xs font-bold uppercase hover:underline">Cancelar e Sair</button>
+           </div>
+        </div>
+      )}
+
       <div className="h-14 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-6 shrink-0">
         <div className="flex items-center gap-4">
           <span className="text-xs font-black uppercase tracking-widest text-slate-500">Sessão {roomId}</span>
@@ -212,7 +242,7 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
       </div>
 
       <div className="flex-1 p-4 relative overflow-y-auto custom-scrollbar">
-        {isInWaitingRoom && (
+        {isInWaitingRoom && !retryMessage && (
           <div className="absolute inset-0 z-50 bg-slate-900/90 flex flex-col items-center justify-center p-8 text-center backdrop-blur-sm">
              <div className="max-w-md bg-slate-800 p-10 rounded-[2rem] border border-white/5 shadow-2xl">
                 <Shield size={64} className="text-amber-500 mx-auto mb-6"/>
@@ -223,21 +253,29 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
           </div>
         )}
 
-        <div className={`grid gap-4 h-full content-start ${pinnedId ? 'grid-cols-4' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'}`}>
-           {allActive.map(p => (
-             <div key={p.id} className={pinnedId === p.id ? 'col-span-4 row-span-3 aspect-video' : 'aspect-video'}>
-               <ParticipantCard 
-                  participant={p} 
-                  isLocal={(p as any).isLocal} 
-                  stream={(p as any).stream} 
-                  isPinned={pinnedId === p.id}
-                  hasJudgePower={hasJudgePower}
-                  onPin={(id: any) => setPinnedId(current => current === id ? null : id)}
-                  onKick={(id: any) => roomSignaling.broadcast({ type: 'LEAVE', payload: { id } })}
-               />
-             </div>
-           ))}
-        </div>
+        {hearingStatus === 'ended' ? (
+          <div className="h-full flex flex-col items-center justify-center animate-in zoom-in-95">
+            <Gavel size={64} className="text-accent-gold mb-4"/>
+            <h2 className="text-3xl font-serif font-bold">Audiência Encerrada</h2>
+            <button onClick={onExit} className="mt-8 px-10 py-3 bg-white text-slate-900 rounded-xl font-bold">Sair do Tribunal</button>
+          </div>
+        ) : (
+          <div className={`grid gap-4 h-full content-start ${pinnedId ? 'grid-cols-4' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'}`}>
+             {allActive.map(p => (
+               <div key={p.id} className={pinnedId === p.id ? 'col-span-4 row-span-3 aspect-video' : 'aspect-video'}>
+                 <ParticipantCard 
+                    participant={p} 
+                    isLocal={(p as any).isLocal} 
+                    stream={(p as any).stream} 
+                    isPinned={pinnedId === p.id}
+                    hasJudgePower={hasJudgePower}
+                    onPin={(id: any) => setPinnedId(current => current === id ? null : id)}
+                    onKick={(id: any) => roomSignaling.broadcast({ type: 'LEAVE', payload: { id } })}
+                 />
+               </div>
+             ))}
+          </div>
+        )}
       </div>
 
       {hasJudgePower && participants.some(p => p.status === 'waiting') && (

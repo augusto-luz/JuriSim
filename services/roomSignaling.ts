@@ -10,7 +10,8 @@ export type SignalingEvent =
   | { type: 'MUTE_FORCE', payload: { targetId?: string } }
   | { type: 'HEARING_STATUS', payload: { status: 'waiting' | 'running' | 'ended', startTime?: number } }
   | { type: 'SYNC_USERS', payload: Participant[] }
-  | { type: 'ERROR', payload: string };
+  | { type: 'ERROR', payload: string }
+  | { type: 'RETRYING', payload: string };
 
 class RoomSignalingService {
   private peer: Peer | null = null;
@@ -23,6 +24,8 @@ class RoomSignalingService {
   private roomId: string = '';
   private localStream: MediaStream | null = null;
   private localParticipantInfo: Participant | null = null;
+  private retryCount: number = 0;
+  private maxRetries: number = 5;
 
   getPeerId() { return this.peer?.id || ''; }
 
@@ -39,13 +42,12 @@ class RoomSignalingService {
     const cleanRoomId = roomId.replace(/[^a-zA-Z0-9-]/g, '');
     const myPeerId = isHost ? `juri-v3-${cleanRoomId}` : undefined;
     
-    // Rigoroso: Força conexão segura (WSS) se estiver no Vercel (HTTPS)
     const isSecure = window.location.protocol === 'https:';
 
     this.peer = new Peer(myPeerId, {
       debug: 1,
       secure: isSecure,
-      host: '0.peerjs.com', // Uso do servidor padrão da comunidade para maior compatibilidade
+      host: '0.peerjs.com',
       port: 443,
       config: {
         iceServers: [
@@ -56,9 +58,10 @@ class RoomSignalingService {
     });
 
     this.peer.on('open', (id) => {
-      console.debug(`[Signaling] Sala conectada via ${isSecure ? 'WSS' : 'WS'}. PeerID: ${id}`);
+      console.debug(`[Signaling] Conectado. ID: ${id}`);
+      this.retryCount = 0; // Reset ao abrir
       if (!isHost) {
-        this.attemptConnectToHost(`juri-v3-${cleanRoomId}`, user, 0);
+        this.attemptConnectToHost(`juri-v3-${cleanRoomId}`, user);
       } else if (this.localParticipantInfo) {
         this.currentParticipants.set(id, { ...this.localParticipantInfo, id });
       }
@@ -69,36 +72,46 @@ class RoomSignalingService {
 
     this.peer.on('error', (err: any) => {
       console.error("[Signaling] Erro:", err.type);
+      
+      // Lógica de Re-tentativa para Host Indisponível (comum se o host for lento ou estiver escolhendo cargo)
+      if (err.type === 'peer-unavailable' && !this.isHost && this.retryCount < this.maxRetries) {
+        this.retryCount++;
+        this.notifyListeners({ type: 'RETRYING', payload: `Aguardando o host se conectar... (Tentativa ${this.retryCount}/${this.maxRetries})` });
+        
+        setTimeout(() => {
+          if (this.peer && !this.peer.destroyed) {
+            this.attemptConnectToHost(`juri-v3-${cleanRoomId}`, this.localParticipantInfo!);
+          }
+        }, 3000); // 3 segundos entre tentativas
+        return;
+      }
+
       if (err.type === 'peer-unavailable') {
-        this.notifyListeners({ type: 'ERROR', payload: 'Esta sala não foi encontrada ou o anfitrião desconectou.' });
+        this.notifyListeners({ type: 'ERROR', payload: 'O anfitrião da sala não foi encontrado. Verifique se o código está correto.' });
       } else if (err.type === 'unavailable-id') {
-        this.notifyListeners({ type: 'ERROR', payload: 'Conflito de ID: Esta sala já está sendo gerida.' });
+        this.notifyListeners({ type: 'ERROR', payload: 'Esta sala já possui um anfitrião ativo.' });
       } else {
-        this.notifyListeners({ type: 'ERROR', payload: `Falha técnica de rede: ${err.type}` });
+        this.notifyListeners({ type: 'ERROR', payload: `Falha de rede: ${err.type}` });
       }
     });
   }
 
-  private attemptConnectToHost(hostId: string, user: Participant, retryCount: number) {
+  private attemptConnectToHost(hostId: string, user: Participant) {
     if (!this.peer || this.peer.destroyed) return;
 
+    console.debug(`[Signaling] Tentando conectar ao host: ${hostId}`);
     const conn = this.peer.connect(hostId, { metadata: user, reliable: true });
 
-    const timeout = window.setTimeout(() => {
-      if (!conn.open && retryCount < 2) {
-        conn.close();
-        this.attemptConnectToHost(hostId, user, retryCount + 1);
-      }
-    }, 4000);
-
     conn.on('open', () => {
-      clearTimeout(timeout);
+      console.debug("[Signaling] Conexão com host estabelecida.");
+      this.retryCount = 0;
       this.connections.set(hostId, conn);
       conn.send({ type: 'JOIN', payload: { ...user, id: this.peer!.id } });
     });
 
     conn.on('data', (data: any) => this.handleMessage(data));
     conn.on('close', () => this.handleParticipantLeave(hostId));
+    conn.on('error', (err) => console.error("[Signaling] Erro na conexão de dados:", err));
   }
 
   private handleDataConnection(conn: DataConnection) {
@@ -199,6 +212,7 @@ class RoomSignalingService {
     this.mediaConnections.forEach(m => m.close());
     this.mediaConnections.clear();
     this.currentParticipants.clear();
+    this.retryCount = 0;
     
     if (this.peer) { 
       this.peer.destroy(); 
