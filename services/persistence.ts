@@ -2,7 +2,9 @@
 import { ChatMessage, User, Scenario, Classroom, StudentReport, CourtRole, UserPerformance, ClassChatMessage } from '../types';
 import { SCENARIOS } from '../constants';
 
+const DB_VERSION = '1.2';
 const KEYS = {
+  VERSION: 'jurisim_db_v',
   USER: 'jurisim_user',
   SESSION: 'jurisim_session',
   CHAT_HISTORY: 'jurisim_chat_',
@@ -24,17 +26,33 @@ export interface RoomHistoryEntry {
 }
 
 export const persistenceService = {
+  _init: () => {
+    const currentVersion = localStorage.getItem(KEYS.VERSION);
+    if (currentVersion !== DB_VERSION) {
+      console.warn(`[DB] Migrando banco de dados de ${currentVersion} para ${DB_VERSION}`);
+      // Poderia haver lógica de migração aqui; por enquanto apenas marca a versão
+      localStorage.setItem(KEYS.VERSION, DB_VERSION);
+    }
+  },
+
   saveSession: (user: User, remember: boolean) => {
     try {
         const storage = remember ? localStorage : sessionStorage;
         storage.setItem(KEYS.USER, JSON.stringify(user));
-    } catch (e) { console.error("Storage error", e); }
+        persistenceService.getUserPerformance(user.id, user.name);
+    } catch (e) { persistenceService._handleStorageError(e); }
   },
 
   restoreSession: (): User | null => {
     try {
-      let userStored = sessionStorage.getItem(KEYS.USER) || localStorage.getItem(KEYS.USER);
-      if (userStored) return JSON.parse(userStored);
+      const userStored = sessionStorage.getItem(KEYS.USER) || localStorage.getItem(KEYS.USER);
+      if (userStored) {
+        const user = JSON.parse(userStored);
+        if (user && user.id) {
+          persistenceService.getUserPerformance(user.id, user.name);
+          return user;
+        }
+      }
     } catch (e) { }
     return null;
   },
@@ -49,7 +67,7 @@ export const persistenceService = {
       const perf = persistenceService.getUserPerformance(userId);
       perf.totalExerciseTime += minutes;
       localStorage.setItem(`${KEYS.PERFORMANCE}${userId}`, JSON.stringify(perf));
-    } catch (e) { console.error(e); }
+    } catch (e) { persistenceService._handleStorageError(e); }
   },
 
   trackScenarioStart: (scenarioId: string) => {
@@ -57,72 +75,96 @@ export const persistenceService = {
       const stats = JSON.parse(localStorage.getItem(KEYS.SCENARIO_STATS) || '{}');
       stats[scenarioId] = (stats[scenarioId] || 0) + 1;
       localStorage.setItem(KEYS.SCENARIO_STATS, JSON.stringify(stats));
-    } catch (e) { console.error(e); }
+    } catch (e) { }
   },
 
   updatePerformanceStats: (userId: string, report: StudentReport) => {
     try {
-      const perf = persistenceService.getUserPerformance(userId);
+      const perf = persistenceService.getUserPerformance(userId, report.studentName);
       const n = perf.totalSimulations;
-      perf.avgOratory = (perf.avgOratory * n + report.technicalAnalysis.rhetoric) / (n + 1);
-      perf.avgProcedural = (perf.avgProcedural * n + report.technicalAnalysis.procedure) / (n + 1);
-      perf.avgEvidence = (perf.avgEvidence * n + report.technicalAnalysis.evidenceHandling) / (n + 1);
+      perf.avgOratory = Math.round((perf.avgOratory * n + report.technicalAnalysis.rhetoric) / (n + 1));
+      perf.avgProcedural = Math.round((perf.avgProcedural * n + report.technicalAnalysis.procedure) / (n + 1));
+      perf.avgEvidence = Math.round((perf.avgEvidence * n + report.technicalAnalysis.evidenceHandling) / (n + 1));
       perf.totalSimulations += 1;
       localStorage.setItem(`${KEYS.PERFORMANCE}${userId}`, JSON.stringify(perf));
-    } catch (e) { console.error(e); }
+    } catch (e) { persistenceService._handleStorageError(e); }
   },
 
-  getUserPerformance: (userId: string): UserPerformance => {
-    const stored = localStorage.getItem(`${KEYS.PERFORMANCE}${userId}`);
-    if (stored) return JSON.parse(stored);
+  getUserPerformance: (userId: string, userName?: string): UserPerformance => {
+    const key = `${KEYS.PERFORMANCE}${userId}`;
+    const stored = localStorage.getItem(key);
+    let perf: UserPerformance;
     
-    return {
-      userId,
-      userName: 'Usuário',
-      totalExerciseTime: 0,
-      avgOratory: 0,
-      avgProcedural: 0,
-      avgEvidence: 0,
-      totalSimulations: 0
-    };
+    if (stored) {
+      perf = JSON.parse(stored);
+      // Sincronização rigorosa do nome logado
+      if (userName && userName !== 'Usuário' && perf.userName !== userName) {
+        perf.userName = userName;
+        localStorage.setItem(key, JSON.stringify(perf));
+      }
+    } else {
+      perf = {
+        userId,
+        userName: userName || 'Usuário',
+        totalExerciseTime: 0,
+        avgOratory: 0,
+        avgProcedural: 0,
+        avgEvidence: 0,
+        totalSimulations: 0
+      };
+      localStorage.setItem(key, JSON.stringify(perf));
+    }
+    return perf;
   },
 
-  getGlobalRankings: (): UserPerformance[] => {
+  getGlobalRankings: (currentUser?: User): UserPerformance[] => {
     const rankings: UserPerformance[] = [];
     try {
+      if (currentUser) {
+        persistenceService.getUserPerformance(currentUser.id, currentUser.name);
+      }
+
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key?.startsWith(KEYS.PERFORMANCE)) {
-          rankings.push(JSON.parse(localStorage.getItem(key)!));
+        if (key && key.startsWith(KEYS.PERFORMANCE)) {
+          try {
+            const item = JSON.parse(localStorage.getItem(key)!);
+            if (item && item.userId) rankings.push(item);
+          } catch (e) {}
         }
       }
-    } catch(e) {}
+    } catch(e) { }
 
-    // Mock data para preencher se vazio
-    if (rankings.length < 3) {
+    // Mock data resiliente
+    if (rankings.length < 2) {
       const mocks = [
         { userId: 'm1', userName: 'Dra. Beatriz Santos', totalExerciseTime: 850, avgOratory: 94, avgProcedural: 88, avgEvidence: 92, totalSimulations: 45 },
-        { userId: 'm2', userName: 'Dr. Marcos Oliveira', totalExerciseTime: 620, avgOratory: 85, avgProcedural: 91, avgEvidence: 84, totalSimulations: 32 },
-        { userId: 'm3', userName: 'Dra. Julia Costa', totalExerciseTime: 410, avgOratory: 78, avgProcedural: 72, avgEvidence: 95, totalSimulations: 18 }
+        { userId: 'm2', userName: 'Dr. Marcos Oliveira', totalExerciseTime: 620, avgOratory: 85, avgProcedural: 91, avgEvidence: 84, totalSimulations: 32 }
       ];
       mocks.forEach(m => {
         if (!rankings.find(r => r.userId === m.userId)) rankings.push(m);
       });
     }
-    return rankings.sort((a, b) => 
-      ((b.avgOratory + b.avgProcedural + b.avgEvidence)/3) - 
-      ((a.avgOratory + a.avgProcedural + a.avgEvidence)/3)
-    );
+
+    return rankings.sort((a, b) => {
+      const scoreA = (a.avgOratory + a.avgProcedural + a.avgEvidence) / 3;
+      const scoreB = (b.avgOratory + b.avgProcedural + b.avgEvidence) / 3;
+      return scoreB - scoreA;
+    });
   },
 
   getScenarioStats: () => {
-    return JSON.parse(localStorage.getItem(KEYS.SCENARIO_STATS) || '{}');
+    try {
+      return JSON.parse(localStorage.getItem(KEYS.SCENARIO_STATS) || '{}');
+    } catch (e) { return {}; }
   },
 
   getClassrooms: (userId: string): Classroom[] => {
-    const stored = localStorage.getItem(KEYS.CLASSROOMS);
-    const allClasses: Classroom[] = stored ? JSON.parse(stored) : [];
-    return allClasses.filter(c => c.instructorId === userId || (c.studentIds && c.studentIds.includes(userId)));
+    try {
+      const stored = localStorage.getItem(KEYS.CLASSROOMS);
+      const allClasses: Classroom[] = stored ? JSON.parse(stored) : [];
+      return allClasses.filter(c => c.instructorId === userId || (c.studentIds && c.studentIds.includes(userId)));
+    } catch (e) { return []; }
   },
 
   saveClassroom: (classroom: Classroom) => {
@@ -130,7 +172,7 @@ export const persistenceService = {
       const stored = localStorage.getItem(KEYS.CLASSROOMS);
       const current: Classroom[] = stored ? JSON.parse(stored) : [];
       localStorage.setItem(KEYS.CLASSROOMS, JSON.stringify([...current, classroom]));
-    } catch (e) { }
+    } catch (e) { persistenceService._handleStorageError(e); }
   },
 
   joinClassroom: (userId: string, inviteCode: string): boolean => {
@@ -152,19 +194,25 @@ export const persistenceService = {
   },
 
   saveClassMessage: (classId: string, message: ClassChatMessage) => {
-    const history = persistenceService.getClassChat(classId);
-    const newHistory = [...history, message].slice(-50);
-    localStorage.setItem(`${KEYS.CLASS_CHAT}${classId}`, JSON.stringify(newHistory));
+    try {
+      const history = persistenceService.getClassChat(classId);
+      const newHistory = [...history, message].slice(-50);
+      localStorage.setItem(`${KEYS.CLASS_CHAT}${classId}`, JSON.stringify(newHistory));
+    } catch (e) { }
   },
 
   getClassChat: (classId: string): ClassChatMessage[] => {
-    const stored = localStorage.getItem(`${KEYS.CLASS_CHAT}${classId}`);
-    return stored ? JSON.parse(stored) : [];
+    try {
+      const stored = localStorage.getItem(`${KEYS.CLASS_CHAT}${classId}`);
+      return stored ? JSON.parse(stored) : [];
+    } catch (e) { return []; }
   },
 
   getCustomScenarios: (userId: string): Scenario[] => {
-    const stored = localStorage.getItem(`${KEYS.CUSTOM_SCENARIOS}${userId}`);
-    return stored ? JSON.parse(stored) : [];
+    try {
+      const stored = localStorage.getItem(`${KEYS.CUSTOM_SCENARIOS}${userId}`);
+      return stored ? JSON.parse(stored) : [];
+    } catch (e) { return []; }
   },
 
   getScenarioById: (userId: string, scenarioId: string): Scenario | undefined => {
@@ -174,7 +222,9 @@ export const persistenceService = {
   },
 
   saveScenarioProgress: (userId: string, scenarioId: string, progress: number) => {
-    localStorage.setItem(`${KEYS.SCENARIO_PROGRESS}${userId}_${scenarioId}`, progress.toString());
+    try {
+      localStorage.setItem(`${KEYS.SCENARIO_PROGRESS}${userId}_${scenarioId}`, progress.toString());
+    } catch (e) {}
   },
 
   getScenarioProgress: (userId: string, scenarioId: string): number => {
@@ -183,13 +233,18 @@ export const persistenceService = {
   },
 
   saveStudentReport: (report: StudentReport) => {
-    const reports = JSON.parse(localStorage.getItem(KEYS.REPORTS) || '[]');
-    localStorage.setItem(KEYS.REPORTS, JSON.stringify([...reports, report]));
-    persistenceService.updatePerformanceStats(report.studentId, report);
+    try {
+      const reports = JSON.parse(localStorage.getItem(KEYS.REPORTS) || '[]');
+      const newReports = [...reports, report].slice(-50); // Mantém apenas os últimos 50 relatórios para performance
+      localStorage.setItem(KEYS.REPORTS, JSON.stringify(newReports));
+      persistenceService.updatePerformanceStats(report.studentId, report);
+    } catch (e) { persistenceService._handleStorageError(e); }
   },
 
   saveChatHistory: (userId: string, scenarioId: string, messages: ChatMessage[]) => {
-    localStorage.setItem(`${KEYS.CHAT_HISTORY}${userId}_${scenarioId}`, JSON.stringify(messages));
+    try {
+      localStorage.setItem(`${KEYS.CHAT_HISTORY}${userId}_${scenarioId}`, JSON.stringify(messages.slice(-30)));
+    } catch (e) { persistenceService._handleStorageError(e); }
   },
 
   getChatHistory: (userId: string, scenarioId: string): ChatMessage[] | null => {
@@ -198,10 +253,12 @@ export const persistenceService = {
   },
 
   saveRoomHistory: (userId: string, entry: RoomHistoryEntry) => {
-    const history = persistenceService.getRoomHistory(userId);
-    const filtered = history.filter(h => h.roomId !== entry.roomId);
-    const newHistory = [entry, ...filtered].slice(0, 10);
-    localStorage.setItem(`${KEYS.ROOM_HISTORY}${userId}`, JSON.stringify(newHistory));
+    try {
+      const history = persistenceService.getRoomHistory(userId);
+      const filtered = history.filter(h => h.roomId !== entry.roomId);
+      const newHistory = [entry, ...filtered].slice(0, 10);
+      localStorage.setItem(`${KEYS.ROOM_HISTORY}${userId}`, JSON.stringify(newHistory));
+    } catch (e) { }
   },
 
   getRoomHistory: (userId: string): RoomHistoryEntry[] => {
@@ -215,8 +272,21 @@ export const persistenceService = {
     return entry ? entry.role : null;
   },
 
+  _handleStorageError: (e: any) => {
+    console.error("[DB] Storage Quota Exceeded. Limpando histórico antigo...");
+    // Limpa metadados não essenciais se o disco encher
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith(KEYS.CHAT_HISTORY) || key.startsWith(KEYS.CLASS_CHAT))) {
+            localStorage.removeItem(key);
+        }
+    }
+  },
+
   resetAll: () => {
     localStorage.clear();
     sessionStorage.clear();
   }
 };
+
+persistenceService._init();

@@ -10,7 +10,7 @@ import {
   Edit3, Check, Info, Copy, CheckCircle,
   Play, Square, AlertOctagon,
   User as UserIcon,
-  Share2, ArrowLeftCircle
+  Share2, ArrowLeftCircle, AlertCircle
 } from 'lucide-react';
 import { persistenceService } from '../services/persistence';
 
@@ -87,6 +87,7 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
   const [pinnedId, setPinnedId] = useState<string | null>(null);
   const [isInWaitingRoom, setIsInWaitingRoom] = useState(currentUserRole === CourtRole.WITNESS);
   const [hearingStatus, setHearingStatus] = useState<'waiting' | 'running' | 'ended'>('waiting');
+  const [error, setError] = useState<string | null>(null);
   const sessionStartRef = useRef<number>(Date.now());
 
   const localUser = useMemo<Participant>(() => ({
@@ -125,6 +126,11 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
 
   useEffect(() => {
     const unsub = roomSignaling.subscribe((event: SignalingEvent) => {
+      if (event.type === 'ERROR') {
+        setError(event.payload);
+        return;
+      }
+      
       if (event.type === 'UPDATE' && event.payload.id === roomSignaling.getPeerId() && event.payload.status === 'active') {
         setIsInWaitingRoom(false);
       }
@@ -168,6 +174,17 @@ export const MultiplayerRoom: React.FC<MultiplayerRoomProps> = ({ onExit, curren
     if (!isInWaitingRoom) list.unshift({ ...localUser, stream: localStream || undefined, isLocal: true } as any);
     return list;
   }, [participants, localUser, isInWaitingRoom, localStream]);
+
+  if (error) return (
+    <div className="h-full bg-slate-950 flex flex-col items-center justify-center text-white p-6 text-center">
+       <AlertOctagon size={64} className="text-red-500 mb-4 animate-bounce" />
+       <h2 className="text-2xl font-serif font-bold mb-4">Falha Crítica na Conexão</h2>
+       <p className="text-slate-400 max-w-md mb-8">{error}</p>
+       <button onClick={onExit} className="px-10 py-3 bg-white text-slate-900 rounded-xl font-bold hover:bg-slate-200 transition">
+          Retornar ao Lobby
+       </button>
+    </div>
+  );
 
   if (hearingStatus === 'ended') return (
     <div className="h-full bg-slate-950 flex flex-col items-center justify-center text-white">

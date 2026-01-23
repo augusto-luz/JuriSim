@@ -1,8 +1,9 @@
 
 import React, { useEffect, useState } from 'react';
-import { Video, Keyboard, Users, Shield, Globe, Clock, Calendar, History, ArrowRight, Gavel, Scale, User as UserIcon } from 'lucide-react';
+import { Video, Keyboard, Users, Shield, Globe, Clock, Calendar, History, ArrowRight, Gavel, Scale, User as UserIcon, AlertCircle, Loader2 } from 'lucide-react';
 import { User, CourtRole } from '../types';
 import { persistenceService, RoomHistoryEntry } from '../services/persistence';
+import { roomSignaling } from '../services/roomSignaling';
 
 interface MultiplayerLobbyProps {
   onStartNewMeeting: () => void;
@@ -20,14 +21,38 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
   user
 }) => {
   const [history, setHistory] = useState<RoomHistoryEntry[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
 
   useEffect(() => {
     setHistory(persistenceService.getRoomHistory(user.id));
+    
+    // Escuta erros globais de sinalização
+    const unsub = roomSignaling.subscribe((event) => {
+      if (event.type === 'ERROR') {
+        setError(event.payload);
+        setIsConnecting(false);
+      }
+    });
+    
+    return unsub;
   }, [user.id]);
 
   const handleReconnect = (entry: RoomHistoryEntry) => {
+    setError(null);
     setJoinCode(entry.roomId);
     onJoinMeeting(entry.role);
+  };
+
+  const handleJoin = () => {
+    if (!joinCode.trim()) return;
+    setError(null);
+    setIsConnecting(true);
+    // Timeout de segurança para a conexão
+    setTimeout(() => {
+      if (isConnecting) setIsConnecting(false);
+    }, 10000);
+    onJoinMeeting();
   };
 
   return (
@@ -44,30 +69,42 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
             </p>
          </div>
 
+         {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl flex items-center gap-3 text-red-700 animate-in slide-in-from-top-2">
+               <AlertCircle size={20} className="shrink-0" />
+               <p className="text-sm font-bold">{error}</p>
+            </div>
+         )}
+
          <div className="flex flex-col sm:flex-row gap-4 mb-10">
             <button 
                onClick={onStartNewMeeting}
-               className="flex items-center justify-center gap-3 bg-legal-900 text-white px-8 py-4 rounded-xl text-lg font-bold hover:bg-legal-800 transition shadow-xl"
+               disabled={isConnecting}
+               className="flex items-center justify-center gap-3 bg-legal-900 text-white px-8 py-4 rounded-xl text-lg font-bold hover:bg-legal-800 transition shadow-xl disabled:opacity-50"
             >
                <Video size={24}/>
                Nova Audiência
             </button>
             
-            <div className="flex items-center bg-white border border-gray-300 rounded-xl px-4 py-2 shadow-sm focus-within:ring-2 focus-within:ring-legal-500 transition">
+            <div className={`flex items-center bg-white border ${error ? 'border-red-300' : 'border-gray-300'} rounded-xl px-4 py-2 shadow-sm focus-within:ring-2 focus-within:ring-legal-500 transition`}>
                <Keyboard className="text-gray-400 mr-3" size={24}/>
                <input 
                   type="text" 
                   placeholder="Código da sala" 
                   value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value)}
+                  disabled={isConnecting}
+                  onChange={(e) => {
+                    setJoinCode(e.target.value);
+                    if (error) setError(null);
+                  }}
                   className="bg-transparent border-none outline-none text-gray-700 placeholder-gray-400 w-full font-mono"
                />
                <button 
-                  onClick={() => onJoinMeeting()}
-                  disabled={!joinCode}
-                  className="ml-2 text-legal-900 font-bold hover:text-accent-gold disabled:opacity-30 uppercase text-sm"
+                  onClick={handleJoin}
+                  disabled={!joinCode || isConnecting}
+                  className="ml-2 text-legal-900 font-bold hover:text-accent-gold disabled:opacity-30 uppercase text-sm flex items-center gap-2"
                >
-                  Entrar
+                  {isConnecting ? <Loader2 size={16} className="animate-spin" /> : 'Entrar'}
                </button>
             </div>
          </div>
@@ -84,7 +121,8 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                    <button 
                      key={entry.roomId} 
                      onClick={() => handleReconnect(entry)}
-                     className="bg-white border border-slate-200 p-4 rounded-2xl text-left hover:border-accent-gold hover:shadow-md transition-all group"
+                     disabled={isConnecting}
+                     className="bg-white border border-slate-200 p-4 rounded-2xl text-left hover:border-accent-gold hover:shadow-md transition-all group disabled:opacity-50"
                    >
                       <div className="flex justify-between items-start mb-2">
                          <div className="p-2 bg-slate-50 rounded-lg group-hover:bg-accent-gold/10 transition-colors">

@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
   <head>
@@ -7,7 +8,9 @@
     <meta name="description" content="Simulação de audiências com IA e tribunal virtual para treinamento jurídico." />
     <meta name="theme-color" content="#102a43" />
     
-    <!-- Tailwind via CDN para estilização rápida sem build step complexo de CSS -->
+    <!-- Content Security Policy para permitir WebRTC e Google Fonts com segurança -->
+    <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
@@ -35,17 +38,6 @@
               accent: {
                 gold: '#c5a065',
               }
-            },
-            animation: {
-              blob: "blob 7s infinite",
-            },
-            keyframes: {
-              blob: {
-                "0%": { transform: "translate(0px, 0px) scale(1)" },
-                "33%": { transform: "translate(30px, -50px) scale(1.1)" },
-                "66%": { transform: "translate(-20px, 20px) scale(0.9)" },
-                "100%": { transform: "translate(0px, 0px) scale(1)" },
-              },
             },
           },
         },

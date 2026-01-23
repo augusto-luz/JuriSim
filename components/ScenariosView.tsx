@@ -105,7 +105,6 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
     if (activeTab === 'library') {
       setScenarios(SCENARIOS.map(s => ({ ...s, progress: persistenceService.getScenarioProgress(user.id, s.id) })));
     } else if (activeTab === 'my_cases') {
-      // Casos protocolados (custom) + Casos nativos iniciados (progress > 0)
       const custom = persistenceService.getCustomScenarios(user.id);
       const startedNative = SCENARIOS.filter(s => persistenceService.getScenarioProgress(user.id, s.id) > 0);
       
@@ -117,11 +116,12 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
     } else if (activeTab === 'classes') {
       setClassrooms(persistenceService.getClassrooms(user.id));
     } else if (activeTab === 'ranking') {
-      setRankings(persistenceService.getGlobalRankings());
+      // BUG FIX: Agora passamos o objeto user para garantir o nome correto no ranking
+      setRankings(persistenceService.getGlobalRankings(user));
     }
   };
 
-  const myPerformance = useMemo(() => persistenceService.getUserPerformance(user.id), [user.id, rankings]);
+  const myPerformance = useMemo(() => persistenceService.getUserPerformance(user.id, user.name), [user.id, user.name]);
 
   const radarData = useMemo(() => [
     { subject: 'Oratória', A: myPerformance.avgOratory || 70, fullMark: 100 },
@@ -137,7 +137,7 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
       name: s.title,
       activity: stats[s.id] || Math.floor(Math.random() * 50) 
     })).sort((a,b) => b.activity - a.activity).slice(0, 5);
-  }, [rankings]);
+  }, []);
 
   const handleCreateCase = (e: React.FormEvent) => {
     e.preventDefault();

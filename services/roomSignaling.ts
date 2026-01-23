@@ -9,7 +9,8 @@ export type SignalingEvent =
   | { type: 'LEAVE', payload: { id: string } }
   | { type: 'MUTE_FORCE', payload: { targetId?: string } }
   | { type: 'HEARING_STATUS', payload: { status: 'waiting' | 'running' | 'ended', startTime?: number } }
-  | { type: 'SYNC_USERS', payload: Participant[] };
+  | { type: 'SYNC_USERS', payload: Participant[] }
+  | { type: 'ERROR', payload: string };
 
 class RoomSignalingService {
   private peer: Peer | null = null;
@@ -29,6 +30,7 @@ class RoomSignalingService {
     if (!roomId) return;
 
     this.disconnect();
+    
     this.roomId = roomId;
     this.isHost = isHost;
     this.localStream = stream;
@@ -37,8 +39,12 @@ class RoomSignalingService {
     const cleanRoomId = roomId.replace(/[^a-zA-Z0-9-]/g, '');
     const myPeerId = isHost ? `jurisim-v2-${cleanRoomId}` : undefined;
     
+    // Forçamos secure: true se estivermos em HTTPS (Vercel) para evitar aviso de link não confiável
+    const isSecure = window.location.protocol === 'https:';
+
     this.peer = new Peer(myPeerId, {
       debug: 1,
+      secure: isSecure,
       config: {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
@@ -48,7 +54,7 @@ class RoomSignalingService {
     });
 
     this.peer.on('open', (id) => {
-      console.log(`[Signaling] ID: ${id}`);
+      console.debug(`[Signaling] Conectado via ${isSecure ? 'SSL' : 'HTTP'}. ID: ${id}`);
       if (!isHost) {
         this.attemptConnectToHost(`jurisim-v2-${cleanRoomId}`, user, 0);
       } else if (this.localParticipantInfo) {
@@ -60,9 +66,14 @@ class RoomSignalingService {
     this.peer.on('call', (call) => this.handleIncomingCall(call));
 
     this.peer.on('error', (err: any) => {
+      console.error("[Signaling] Erro de rede:", err.type);
+      
       if (err.type === 'unavailable-id' && isHost) {
-        console.warn("Sala já ativa. Tentando reconectar como participante.");
-        // Não resetamos, permitimos que o erro suba para a UI se necessário
+        this.notifyListeners({ type: 'ERROR', payload: 'Este ID de sala já está em uso.' });
+      } else if (err.type === 'peer-unavailable') {
+        this.notifyListeners({ type: 'ERROR', payload: 'Tribunal Virtual não encontrado.' });
+      } else {
+        this.notifyListeners({ type: 'ERROR', payload: `Erro técnico: ${err.type}` });
       }
     });
   }
@@ -73,11 +84,15 @@ class RoomSignalingService {
     const conn = this.peer.connect(hostId, { metadata: user, reliable: true });
 
     const timeout = window.setTimeout(() => {
-      if (!conn.open && retryCount < 3) {
+      if (!conn.open) {
         conn.close();
-        this.attemptConnectToHost(hostId, user, retryCount + 1);
+        if (retryCount < 2) {
+          this.attemptConnectToHost(hostId, user, retryCount + 1);
+        } else {
+          this.notifyListeners({ type: 'ERROR', payload: 'Falha ao ingressar na sessão do anfitrião.' });
+        }
       }
-    }, 4000);
+    }, 5000);
 
     conn.on('open', () => {
       clearTimeout(timeout);
@@ -86,6 +101,7 @@ class RoomSignalingService {
     });
 
     conn.on('data', (data: any) => this.handleMessage(data));
+    conn.on('close', () => this.handleParticipantLeave(hostId));
   }
 
   private handleDataConnection(conn: DataConnection) {
@@ -99,11 +115,14 @@ class RoomSignalingService {
         }
       }
     });
+    
     conn.on('data', (data: any) => {
       this.handleMessage(data);
       if (this.isHost) this.broadcastExcept(data, conn.peer);
     });
+    
     conn.on('close', () => this.handleParticipantLeave(conn.peer));
+    conn.on('error', () => this.handleParticipantLeave(conn.peer));
   }
 
   private handleIncomingCall(call: MediaConnection) {
@@ -122,14 +141,15 @@ class RoomSignalingService {
   private handleMessage(event: SignalingEvent) {
     if (event.type === 'JOIN') {
       this.currentParticipants.set(event.payload.id, event.payload);
-      if (!this.isHost && event.payload.id !== this.peer?.id && this.localStream) {
+      if (!this.isHost && event.payload.id !== this.peer?.id && this.localStream && !this.mediaConnections.has(event.payload.id)) {
         const call = this.peer!.call(event.payload.id, this.localStream);
         this.setupMediaCall(call);
       }
     } else if (event.type === 'SYNC_USERS') {
       event.payload.forEach(p => {
+        if (p.id === this.peer?.id) return;
         this.currentParticipants.set(p.id, p);
-        if (p.id !== this.peer?.id && !this.mediaConnections.has(p.id) && this.localStream) {
+        if (!this.mediaConnections.has(p.id) && this.localStream) {
           const call = this.peer!.call(p.id, this.localStream);
           this.setupMediaCall(call);
         }
@@ -143,12 +163,15 @@ class RoomSignalingService {
 
   private handleParticipantLeave(id: string) {
     this.connections.delete(id);
+    this.mediaConnections.delete(id);
     this.currentParticipants.delete(id);
     this.notifyListeners({ type: 'LEAVE', payload: { id } });
   }
 
   private broadcastExcept(data: any, skipId: string) {
-    this.connections.forEach((conn, id) => { if (id !== skipId && conn.open) conn.send(data); });
+    this.connections.forEach((conn, id) => { 
+      if (id !== skipId && conn.open) conn.send(data); 
+    });
   }
 
   broadcast(event: SignalingEvent) {
@@ -157,13 +180,16 @@ class RoomSignalingService {
       this.connections.forEach(conn => conn.open && conn.send(event));
     } else {
       const cleanRoomId = this.roomId.replace(/[^a-zA-Z0-9-]/g, '');
-      const hostConn = this.connections.get(`jurisim-v2-${cleanRoomId}`);
+      const hostId = `jurisim-v2-${cleanRoomId}`;
+      const hostConn = this.connections.get(hostId);
       if (hostConn?.open) hostConn.send(event);
     }
   }
 
   sendUpdate(participant: Participant) {
-    if (this.peer) this.broadcast({ type: 'UPDATE', payload: { ...participant, id: this.peer.id } });
+    if (this.peer && !this.peer.destroyed) {
+      this.broadcast({ type: 'UPDATE', payload: { ...participant, id: this.peer.id } });
+    }
   }
 
   sendHearingStatus(status: 'waiting' | 'running' | 'ended', startTime?: number) {
@@ -171,15 +197,16 @@ class RoomSignalingService {
   }
 
   disconnect() {
-    if (this.peer) { 
-      this.peer.destroy(); 
-      this.peer = null; 
-    }
     this.connections.forEach(c => c.close());
     this.connections.clear();
     this.mediaConnections.forEach(m => m.close());
     this.mediaConnections.clear();
     this.currentParticipants.clear();
+    
+    if (this.peer) { 
+      this.peer.destroy(); 
+      this.peer = null; 
+    }
   }
 
   subscribe(cb: (event: SignalingEvent) => void) {
@@ -187,7 +214,9 @@ class RoomSignalingService {
     return () => { this.listeners = this.listeners.filter(l => l !== cb); };
   }
 
-  private notifyListeners(e: SignalingEvent) { this.listeners.forEach(l => l(e)); }
+  private notifyListeners(e: SignalingEvent) { 
+    this.listeners.forEach(l => l(e)); 
+  }
 }
 
 export const roomSignaling = new RoomSignalingService();
