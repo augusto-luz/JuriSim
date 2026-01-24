@@ -15,6 +15,10 @@ import { MOCK_USER, SCENARIOS } from './constants';
 import { CourtRole, User as UserType } from './types';
 import { X, User as UserIcon, Shield, Gavel, Scale, Users, PlayCircle, Info } from 'lucide-react';
 
+const generateShortCode = () => {
+  return Math.random().toString(36).substring(2, 8).toUpperCase();
+};
+
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<UserType>(MOCK_USER);
@@ -39,7 +43,7 @@ const App: React.FC = () => {
     }
     
     if (roomParam) {
-        const normalizedRoom = roomParam.toLowerCase();
+        const normalizedRoom = roomParam.toUpperCase();
         setJoinCodeInput(normalizedRoom);
         setActiveRoomId(normalizedRoom);
         const previousRole = restoredUser ? persistenceService.getRoleForRoom(restoredUser.id, normalizedRoom) : null;
@@ -148,7 +152,7 @@ const App: React.FC = () => {
         return (
           <MultiplayerLobby 
             onStartNewMeeting={() => { 
-              const newId = 'room-'+Date.now();
+              const newId = generateShortCode();
               setActiveRoomId(newId); 
               setIsHost(true); 
               setShowRoleSelection(true); 
@@ -157,14 +161,14 @@ const App: React.FC = () => {
               if (role) {
                 handleSelectRole(role);
               } else if (joinCodeInput) {
-                const normalizedCode = joinCodeInput.trim().toLowerCase();
+                const normalizedCode = joinCodeInput.trim().toUpperCase();
                 setActiveRoomId(normalizedCode);
                 setIsHost(false); 
                 setShowRoleSelection(true);
               }
             }} 
             joinCode={joinCodeInput} 
-            setJoinCode={(code) => setJoinCodeInput(code.trim().toLowerCase())} 
+            setJoinCode={(code) => setJoinCodeInput(code.trim().toUpperCase())} 
             user={user} 
           />
         );

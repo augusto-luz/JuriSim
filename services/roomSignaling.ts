@@ -25,7 +25,7 @@ class RoomSignalingService {
   private localStream: MediaStream | null = null;
   private localParticipantInfo: Participant | null = null;
   private retryCount: number = 0;
-  private maxRetries: number = 8; // Aumentado para maior tolerância
+  private maxRetries: number = 10;
 
   getPeerId() { return this.peer?.id || ''; }
 
@@ -39,27 +39,28 @@ class RoomSignalingService {
     this.localStream = stream;
     this.localParticipantInfo = user;
 
-    // Normalização agressiva para garantir que host e guest usem o mesmo ID
-    const cleanRoomId = roomId.replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
+    const cleanRoomId = roomId.trim().toUpperCase();
     const myPeerId = isHost ? `juri-v3-${cleanRoomId}` : undefined;
     
-    const isSecure = window.location.protocol === 'https:';
-
     this.peer = new Peer(myPeerId, {
       debug: 1,
-      secure: true, // Forçar seguro para deploy
+      secure: true,
       host: '0.peerjs.com',
       port: 443,
       config: {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun3.l.google.com:19302' },
+          { urls: 'stun:stun4.l.google.com:19302' },
           { urls: 'stun:global.stun.twilio.com:3478' }
         ]
       }
     });
 
     this.peer.on('open', (id) => {
-      console.debug(`[Signaling] Conectado. ID: ${id}`);
+      console.debug(`[Signaling] Conectado globalmente. ID: ${id}`);
       this.retryCount = 0;
       if (!isHost) {
         this.attemptConnectToHost(`juri-v3-${cleanRoomId}`, user);
@@ -72,30 +73,29 @@ class RoomSignalingService {
     this.peer.on('call', (call) => this.handleIncomingCall(call));
 
     this.peer.on('error', (err: any) => {
-      console.error("[Signaling] Erro:", err.type);
+      console.error("[Signaling] Erro de Sinalização:", err.type);
       
-      // Se o host não foi encontrado, tenta novamente (pode ser delay de propagação do PeerJS)
       if (err.type === 'peer-unavailable' && !this.isHost && this.retryCount < this.maxRetries) {
         this.retryCount++;
         this.notifyListeners({ 
           type: 'RETRYING', 
-          payload: `O Tribunal está processando a entrada... (Tentativa ${this.retryCount}/${this.maxRetries})` 
+          payload: `Sincronizando com a região da audiência... (${this.retryCount}/${this.maxRetries})` 
         });
         
         setTimeout(() => {
           if (this.peer && !this.peer.destroyed) {
             this.attemptConnectToHost(`juri-v3-${cleanRoomId}`, this.localParticipantInfo!);
           }
-        }, 4000); // 4 segundos para dar tempo ao host
+        }, 3000);
         return;
       }
 
       if (err.type === 'peer-unavailable') {
-        this.notifyListeners({ type: 'ERROR', payload: 'A audiência não foi encontrada ou o anfitrião desconectou. Verifique o código.' });
+        this.notifyListeners({ type: 'ERROR', payload: 'Audiência não encontrada nesta região. Verifique se o Magistrado já abriu a sessão.' });
       } else if (err.type === 'unavailable-id') {
-        this.notifyListeners({ type: 'ERROR', payload: 'Esta sala já possui um magistrado ativo ou o código está em uso.' });
+        this.notifyListeners({ type: 'ERROR', payload: 'Conflito de Identidade: Esta sala já possui um Magistrado ativo.' });
       } else {
-        this.notifyListeners({ type: 'ERROR', payload: `Erro de comunicação: ${err.type}` });
+        this.notifyListeners({ type: 'ERROR', payload: `Falha na Rede WebRTC: ${err.type}` });
       }
     });
   }
@@ -103,11 +103,9 @@ class RoomSignalingService {
   private attemptConnectToHost(hostId: string, user: Participant) {
     if (!this.peer || this.peer.destroyed) return;
 
-    console.debug(`[Signaling] Tentando Handshake com host: ${hostId}`);
     const conn = this.peer.connect(hostId, { metadata: user, reliable: true });
 
     conn.on('open', () => {
-      console.debug("[Signaling] Handshake bem sucedido.");
       this.retryCount = 0;
       this.connections.set(hostId, conn);
       conn.send({ type: 'JOIN', payload: { ...user, id: this.peer!.id } });
@@ -115,7 +113,7 @@ class RoomSignalingService {
 
     conn.on('data', (data: any) => this.handleMessage(data));
     conn.on('close', () => this.handleParticipantLeave(hostId));
-    conn.on('error', (err) => console.error("[Signaling] Erro DataConn:", err));
+    conn.on('error', (err) => console.error("[Signaling] Erro no Túnel de Dados:", err));
   }
 
   private handleDataConnection(conn: DataConnection) {
@@ -193,7 +191,7 @@ class RoomSignalingService {
     if (this.isHost) {
       this.connections.forEach(conn => conn.open && conn.send(event));
     } else {
-      const cleanRoomId = this.roomId.replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
+      const cleanRoomId = this.roomId.trim().toUpperCase();
       const hostId = `juri-v3-${cleanRoomId}`;
       const hostConn = this.connections.get(hostId);
       if (hostConn?.open) hostConn.send(event);
