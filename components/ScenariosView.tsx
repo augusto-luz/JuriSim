@@ -23,6 +23,7 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
   const [searchTerm, setSearchTerm] = useState('');
   const [socialSearch, setSocialSearch] = useState('');
   const [allPerformances, setAllPerformances] = useState<UserPerformance[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   const [friendsIds, setFriendsIds] = useState<string[]>([]);
   const [selectedFriend, setSelectedFriend] = useState<UserPerformance | null>(null);
   const [socialChat, setSocialChat] = useState<SocialMessage[]>([]);
@@ -47,8 +48,8 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
       const nativeProgress = SCENARIOS.map(s => ({ ...s, progress: persistenceService.getScenarioProgress(user.id, s.id) })).filter(s => s.progress > 0);
       setScenarios([...nativeProgress, ...custom].sort((a,b) => b.progress - a.progress));
     } else if (activeTab === 'social' || activeTab === 'ranking') {
-      const global = persistenceService.getGlobalRankings(user);
-      setAllPerformances(global);
+      setAllPerformances(persistenceService.getGlobalRankings(user));
+      setAllUsers(persistenceService.getAllUsers());
       setFriendsIds(persistenceService.getFriends(user.id));
     }
   };
@@ -65,13 +66,14 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
   };
 
   const handleQuickAdd = () => {
-    const target = allPerformances.find(p => p.userId === socialSearch || p.userName.toLowerCase() === socialSearch.toLowerCase());
+    // CORREÇÃO: Busca na lista global de usuários para evitar erro de ID não encontrado
+    const target = allUsers.find(u => u.id === socialSearch || u.email.toLowerCase() === socialSearch.toLowerCase());
     if (target) {
-        handleAddFriend(target.userId);
+        handleAddFriend(target.id);
         setSocialSearch('');
     } else {
-        setSocialStatus({msg: "Usuário não encontrado. Verifique o ID exato.", type: 'error'});
-        setTimeout(() => setSocialStatus(null), 3000);
+        setSocialStatus({msg: "Usuário não encontrado. Verifique o ID exato nas configurações do colega.", type: 'error'});
+        setTimeout(() => setSocialStatus(null), 4000);
     }
   };
 
@@ -83,12 +85,13 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
     setSocialInput('');
   };
 
-  const filteredSocial = allPerformances.filter(p => 
-    p.userId !== user.id && (
-      p.userName.toLowerCase().includes(socialSearch.toLowerCase()) || 
-      p.userId.toLowerCase().includes(socialSearch.toLowerCase())
+  // Filtra os usuários que podem ser amigos, excluindo o atual e garantindo que existem na base
+  const filteredSocial = allUsers.filter(u => 
+    u.id !== user.id && u.status === 'active' && (
+      u.name.toLowerCase().includes(socialSearch.toLowerCase()) || 
+      u.id.toLowerCase().includes(socialSearch.toLowerCase())
     )
-  );
+  ).map(u => persistenceService.getUserPerformance(u.id, u.name));
 
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8 animate-in fade-in pb-24">
@@ -106,7 +109,6 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
           <TabButton active={activeTab === 'ranking'} onClick={() => setActiveTab('ranking')} label="Elite Rankings" icon={Trophy} />
       </div>
 
-      {/* VIEW: BIBLIOTECA / MEUS ESTUDOS */}
       {(activeTab === 'library' || activeTab === 'my_cases') && (
         <>
           <div className="relative">
@@ -121,10 +123,8 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
         </>
       )}
 
-      {/* VIEW: SOCIAL (ADVOCACIA DIGITAL) */}
       {activeTab === 'social' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in slide-in-from-bottom-4">
-           {/* Pesquisa e Amigos */}
            <div className="lg:col-span-1 space-y-6">
               <div className="space-y-2">
                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Pesquisar ou Adicionar por ID</label>
@@ -141,7 +141,6 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
                     <button 
                        onClick={handleQuickAdd}
                        className="px-4 bg-legal-900 text-white rounded-xl hover:bg-accent-gold hover:text-legal-900 transition flex items-center justify-center shadow-md active:scale-95"
-                       title="Adicionar Amigo Direto"
                     >
                        <UserPlus size={18}/>
                     </button>
@@ -170,11 +169,11 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
                              </div>
                           </div>
                           <div className="flex gap-1 shrink-0">
-                             <button onClick={() => setSelectedFriend(p)} className="p-2 text-legal-400 hover:text-legal-900 transition" title="Ver Perfil/Chat"><MessageCircle size={16}/></button>
+                             <button onClick={() => setSelectedFriend(p)} className="p-2 text-legal-400 hover:text-legal-900 transition"><MessageCircle size={16}/></button>
                              {friendsIds.includes(p.userId) ? (
-                                <div className="p-2 text-green-500" title="Já é seu amigo"><UserCheck size={16}/></div>
+                                <div className="p-2 text-green-500"><UserCheck size={16}/></div>
                              ) : (
-                                <button onClick={() => handleAddFriend(p.userId)} className="p-2 text-accent-gold hover:text-yellow-600 transition" title="Adicionar Amigo"><UserPlus size={16}/></button>
+                                <button onClick={() => handleAddFriend(p.userId)} className="p-2 text-accent-gold hover:text-yellow-600 transition"><UserPlus size={16}/></button>
                              )}
                           </div>
                        </div>
@@ -185,7 +184,6 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
               </div>
            </div>
 
-           {/* Perfil e Chat do Amigo Selecionado */}
            <div className="lg:col-span-2 space-y-6">
               {selectedFriend ? (
                  <div className="space-y-6 animate-in fade-in duration-300">
@@ -270,7 +268,6 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
         </div>
       )}
 
-      {/* VIEW: RANKING */}
       {activeTab === 'ranking' && (
          <div className="space-y-6 animate-in fade-in">
             <h3 className="text-xl font-serif font-bold text-legal-900">Elite do Tribunal Virtual</h3>

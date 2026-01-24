@@ -35,10 +35,12 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
+  password?: string;
+  status: 'active' | 'suspended';
   plan?: 'FREE' | 'PREMIUM';
   organizationId?: string;
   performance?: UserPerformance;
-  friends?: string[]; // IDs dos amigos
+  friends?: string[];
 }
 
 export interface Scenario {
@@ -84,7 +86,6 @@ export interface Participant {
   stream?: MediaStream;
 }
 
-// Fix: Added missing StudentReport interface to resolve import errors in services and components
 export interface StudentReport {
   id: string;
   studentId: string;

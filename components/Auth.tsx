@@ -1,4 +1,5 @@
 
+import { persistenceService } from '../services/persistence';
 import React, { useState } from 'react';
 import { Gavel, ArrowRight, User, ShieldCheck, Lock, Mail, Users, AlertCircle, Key, CheckCircle } from 'lucide-react';
 import { UserRole, User as UserType } from '../types';
@@ -37,7 +38,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     setIsLoading(true);
 
     if (isRegistering && !isConfirmingEmail) {
-      // Simula envio de e-mail
       setTimeout(() => {
         setIsConfirmingEmail(true);
         setIsLoading(false);
@@ -45,13 +45,23 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       return;
     }
 
-    // Login final (ou após confirmar e-mail)
     setTimeout(() => {
-      const finalUser: UserType = {
+      // Verifica no banco de dados global se o usuário já existe e está suspenso
+      const allUsers = persistenceService.getAllUsers();
+      const existingUser = allUsers.find(u => u.email === formData.email);
+
+      if (existingUser && existingUser.status === 'suspended') {
+        setError("Sua conta foi suspensa pela administração do Tribunal Virtual.");
+        setIsLoading(false);
+        return;
+      }
+
+      const finalUser: UserType = existingUser || {
         id: isMasterEmail ? 'admin-master' : `user-${Math.random().toString(36).substr(2, 9)}`,
         name: formData.name || (isMasterEmail ? "Administrador Augusto" : "Usuário JuriSim"),
         email: formData.email,
         role: isMasterEmail ? UserRole.ADMIN : formData.role,
+        status: 'active',
         plan: (isMasterEmail || formData.role === UserRole.INSTRUCTOR) ? 'PREMIUM' : 'FREE'
       };
       
@@ -94,7 +104,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 font-sans">
       <div className="bg-white w-full max-w-5xl rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col md:flex-row min-h-[700px] border border-slate-200">
         
-        {/* Lado Esquerdo - Branding */}
         <div className="md:w-5/12 bg-legal-900 text-white p-12 flex flex-col justify-between relative overflow-hidden">
           <div className="absolute top-0 right-0 w-80 h-80 bg-accent-gold rounded-full mix-blend-overlay filter blur-3xl opacity-20 -translate-y-1/2 translate-x-1/2"></div>
           
@@ -115,12 +124,11 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           </div>
 
           <div className="relative z-10 space-y-6">
-            <FeatureBadge icon={ShieldCheck} text="Motor Gemini Pro Ativo" />
+            <FeatureBadge icon={ShieldCheck} text="Motor Gemini Flash Ativo" />
             <FeatureBadge icon={Key} text="Acesso Master Liberado" />
           </div>
         </div>
 
-        {/* Lado Direito - Auth */}
         <div className="md:w-7/12 p-10 md:p-16 flex flex-col justify-center">
           <div className="mb-10 text-center md:text-left">
             <div className="inline-flex bg-slate-100 p-1.5 rounded-2xl mb-8">
@@ -143,20 +151,22 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           </div>
 
           <form onSubmit={handleAuth} className="space-y-6">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nome Completo</label>
-              <div className="relative">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                <input
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-accent-gold outline-none transition"
-                  placeholder="Ex: Dr. Augusto Silva"
-                />
-              </div>
-            </div>
+            {(isRegistering || formData.email === MASTER_ADMIN_EMAIL) && (
+               <div className="space-y-2 animate-in slide-in-from-top-2">
+                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nome Completo</label>
+                 <div className="relative">
+                   <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                   <input
+                     type="text"
+                     required={isRegistering}
+                     value={formData.name}
+                     onChange={(e) => setFormData({...formData, name: e.target.value})}
+                     className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-accent-gold outline-none transition"
+                     placeholder="Ex: Dr. Augusto Silva"
+                   />
+                 </div>
+               </div>
+            )}
 
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">E-mail Profissional</label>

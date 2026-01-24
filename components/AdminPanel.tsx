@@ -1,0 +1,227 @@
+
+import React, { useState, useEffect } from 'react';
+import { persistenceService } from '../services/persistence';
+import { User, UserRole } from '../types';
+import { 
+  Users, Search, ShieldAlert, Edit, Trash2, Ban, CheckCircle, Mail, Key, 
+  Database, Fingerprint, Clock, ExternalLink, MoreVertical, X, Save, AlertTriangle
+} from 'lucide-react';
+
+export const AdminPanel: React.FC = () => {
+  const [users, setUsers] = useState<User[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [notification, setNotification] = useState<{msg: string, type: 'success' | 'error'} | null>(null);
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const loadUsers = () => {
+    setUsers(persistenceService.getAllUsers());
+  };
+
+  const notify = (msg: string, type: 'success' | 'error' = 'success') => {
+    setNotification({ msg, type });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  const handleToggleSuspend = (user: User) => {
+    const newStatus = user.status === 'suspended' ? 'active' : 'suspended';
+    const updatedUser = { ...user, status: newStatus as 'active' | 'suspended' };
+    persistenceService.saveUserGlobally(updatedUser);
+    loadUsers();
+    notify(`Usuário ${user.name} ${newStatus === 'suspended' ? 'suspenso' : 'reativado'}.`);
+  };
+
+  const handleDelete = (userId: string) => {
+    if (confirm("TEM CERTEZA? Esta ação é irreversível e apagará todos os dados, performances e histórico deste usuário.")) {
+      persistenceService.deleteUser(userId);
+      loadUsers();
+      notify("Conta excluída permanentemente.", 'error');
+    }
+  };
+
+  const handleSendRecovery = (email: string) => {
+    notify(`Link de recuperação enviado para: ${email}`);
+  };
+
+  const handleSaveEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingUser) {
+      persistenceService.saveUserGlobally(editingUser);
+      setEditingUser(null);
+      loadUsers();
+      notify("Alterações salvas no banco de dados.");
+    }
+  };
+
+  const filteredUsers = users.filter(u => 
+    u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    u.id.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8 animate-in fade-in pb-24">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+           <h1 className="text-3xl font-serif font-bold text-legal-900 flex items-center gap-3">
+             <ShieldAlert className="text-red-600" size={32}/> Painel de Controle Master
+           </h1>
+           <p className="text-sm text-slate-500 mt-1">Gestão centralizada de usuários e integridade do banco de dados.</p>
+        </div>
+        <div className="flex gap-4">
+           <div className="bg-white border rounded-xl px-4 py-2 flex items-center gap-3 shadow-sm">
+              <Database size={16} className="text-slate-400"/>
+              <span className="text-xs font-bold text-slate-600 uppercase tracking-widest">{users.length} Registros</span>
+           </div>
+        </div>
+      </div>
+
+      {notification && (
+        <div className={`fixed bottom-10 right-10 p-4 rounded-2xl shadow-2xl z-50 flex items-center gap-3 animate-in slide-in-from-bottom-5 ${notification.type === 'error' ? 'bg-red-600 text-white' : 'bg-legal-900 text-white'}`}>
+          {notification.type === 'error' ? <AlertTriangle size={20}/> : <CheckCircle size={20}/>}
+          <span className="text-sm font-bold">{notification.msg}</span>
+        </div>
+      )}
+
+      {/* Busca e Filtros */}
+      <div className="relative">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20}/>
+        <input 
+          value={searchTerm} 
+          onChange={e => setSearchTerm(e.target.value)} 
+          placeholder="Pesquisar por Nome, E-mail ou ID..." 
+          className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-red-500 transition shadow-sm"
+        />
+      </div>
+
+      {/* Tabela de Usuários */}
+      <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-slate-50 border-b">
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Identidade</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Função / Plano</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Data de Registro</th>
+                <th className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Ações Master</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredUsers.map(u => (
+                <tr key={u.id} className={`hover:bg-slate-50 transition-colors ${u.status === 'suspended' ? 'bg-red-50/30' : ''}`}>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-xs uppercase">
+                        {u.name.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-legal-900">{u.name}</p>
+                        <p className="text-[10px] text-slate-400 font-mono">{u.email}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-col">
+                       <span className="text-xs font-bold text-slate-700">{u.role}</span>
+                       <span className={`text-[10px] font-black uppercase ${u.plan === 'PREMIUM' ? 'text-accent-gold' : 'text-slate-400'}`}>{u.plan || 'FREE'}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter ${u.status === 'suspended' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                      {u.status === 'suspended' ? 'Suspenso' : 'Ativo'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-1 text-[10px] text-slate-500 font-bold">
+                       <Clock size={12}/> ID: {u.id.substring(0, 8)}...
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex justify-end gap-2">
+                      <button onClick={() => setEditingUser(u)} className="p-2 text-slate-400 hover:text-blue-600 transition" title="Editar Dados"><Edit size={16}/></button>
+                      <button onClick={() => handleSendRecovery(u.email)} className="p-2 text-slate-400 hover:text-accent-gold transition" title="Recuperar Senha"><Key size={16}/></button>
+                      <button onClick={() => handleToggleSuspend(u)} className={`p-2 transition ${u.status === 'suspended' ? 'text-green-500' : 'text-slate-400 hover:text-red-600'}`} title={u.status === 'suspended' ? 'Ativar Conta' : 'Suspender Conta'}>
+                        <Ban size={16}/>
+                      </button>
+                      {u.id !== 'admin-master' && (
+                        <button onClick={() => handleDelete(u.id)} className="p-2 text-slate-400 hover:text-red-600 transition" title="Excluir Permanentemente"><Trash2 size={16}/></button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Modal de Edição */}
+      {editingUser && (
+        <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4">
+           <form onSubmit={handleSaveEdit} className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl overflow-hidden animate-in zoom-in-95">
+              <div className="p-8 bg-slate-900 text-white flex justify-between items-center">
+                 <div>
+                    <h2 className="text-2xl font-serif font-bold">Editar Usuário</h2>
+                    <p className="text-slate-400 text-sm">Atualizando registro master: {editingUser.id}</p>
+                 </div>
+                 <button type="button" onClick={() => setEditingUser(null)} className="p-2 hover:bg-white/10 rounded-full transition"><X size={24}/></button>
+              </div>
+              <div className="p-8 space-y-6">
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                       <label className="text-[10px] font-black text-slate-500 uppercase">Nome Completo</label>
+                       <input 
+                         value={editingUser.name} 
+                         onChange={e=>setEditingUser({...editingUser, name: e.target.value})} 
+                         className="w-full p-3 bg-slate-50 border rounded-xl text-sm font-bold text-legal-900" 
+                       />
+                    </div>
+                    <div className="space-y-1">
+                       <label className="text-[10px] font-black text-slate-500 uppercase">E-mail</label>
+                       <input 
+                         value={editingUser.email} 
+                         onChange={e=>setEditingUser({...editingUser, email: e.target.value})} 
+                         className="w-full p-3 bg-slate-50 border rounded-xl text-sm font-bold text-legal-900" 
+                       />
+                    </div>
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                       <label className="text-[10px] font-black text-slate-500 uppercase">Função</label>
+                       <select 
+                         value={editingUser.role} 
+                         onChange={e=>setEditingUser({...editingUser, role: e.target.value as UserRole})}
+                         className="w-full p-3 bg-slate-50 border rounded-xl text-sm font-bold text-legal-900"
+                       >
+                          <option value={UserRole.STUDENT}>Estudante</option>
+                          <option value={UserRole.LAWYER}>Advogado(a)</option>
+                          <option value={UserRole.INSTRUCTOR}>Instrutor</option>
+                          <option value={UserRole.ADMIN}>Administrador</option>
+                       </select>
+                    </div>
+                    <div className="space-y-1">
+                       <label className="text-[10px] font-black text-slate-500 uppercase">Plano</label>
+                       <select 
+                         value={editingUser.plan} 
+                         onChange={e=>setEditingUser({...editingUser, plan: e.target.value as 'FREE' | 'PREMIUM'})}
+                         className="w-full p-3 bg-slate-50 border rounded-xl text-sm font-bold text-legal-900"
+                       >
+                          <option value="FREE">Gratuito</option>
+                          <option value="PREMIUM">Premium</option>
+                       </select>
+                    </div>
+                 </div>
+                 <button type="submit" className="w-full py-4 bg-red-600 text-white rounded-2xl font-bold shadow-lg hover:bg-red-700 transition-all flex items-center justify-center gap-2">
+                    <Save size={18}/> Salvar Alterações no BD
+                 </button>
+              </div>
+           </form>
+        </div>
+      )}
+    </div>
+  );
+};

@@ -10,9 +10,10 @@ import { Pricing } from './components/Pricing';
 import { ScenariosView } from './components/ScenariosView';
 import { MultiplayerLobby } from './components/MultiplayerLobby';
 import { Settings } from './components/Settings';
+import { AdminPanel } from './components/AdminPanel';
 import { persistenceService } from './services/persistence';
 import { MOCK_USER, SCENARIOS } from './constants';
-import { CourtRole, User as UserType } from './types';
+import { CourtRole, User as UserType, UserRole } from './types';
 import { X, User as UserIcon, Shield, Gavel, Scale, Users, PlayCircle, Info } from 'lucide-react';
 
 const generateShortCode = () => {
@@ -38,8 +39,12 @@ const App: React.FC = () => {
     const restoredUser = persistenceService.restoreSession();
     
     if (restoredUser) {
-      setUser(restoredUser);
-      setIsAuthenticated(true);
+      if (restoredUser.status === 'suspended') {
+        persistenceService.clearSession();
+      } else {
+        setUser(restoredUser);
+        setIsAuthenticated(true);
+      }
     }
     
     if (roomParam) {
@@ -172,6 +177,8 @@ const App: React.FC = () => {
             user={user} 
           />
         );
+      case 'admin_panel':
+        return user.role === UserRole.ADMIN ? <AdminPanel /> : <Dashboard onStartScenario={startScenario} user={user} onUpgrade={() => setCurrentView('pricing')} onChangeView={setCurrentView} />;
       case 'settings':
         return <Settings user={user} onLogout={handleLogout} />;
       default:

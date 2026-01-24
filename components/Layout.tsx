@@ -12,9 +12,10 @@ import {
   X,
   HelpCircle,
   Crown,
-  PlusCircle
+  PlusCircle,
+  ShieldAlert
 } from 'lucide-react';
-import { User } from '../types';
+import { User, UserRole } from '../types';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -49,7 +50,8 @@ const NavItem = ({ icon: Icon, label, active, onClick, disabled = false, badge, 
 
 export const Layout: React.FC<LayoutProps> = ({ children, user, currentView, onChangeView, onLogout }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const isPremium = user.plan === 'PREMIUM' || user.role === 'ADMIN';
+  const isPremium = user.plan === 'PREMIUM' || user.role === UserRole.ADMIN;
+  const isAdmin = user.role === UserRole.ADMIN;
 
   const handleNavClick = (view: string) => {
     onChangeView(view);
@@ -78,6 +80,13 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, currentView, onC
           <div className="px-4 py-2 mt-6 text-[10px] font-black text-legal-500 uppercase tracking-widest">Prática Jurídica</div>
           <NavItem icon={PlayCircle} label="Simulação IA" sublabel="Treinamento Solo" active={currentView === 'simulation'} onClick={() => handleNavClick('simulation')} />
           <NavItem icon={Video} label="Audiência Live" sublabel="Tribunal Virtual" active={currentView === 'multiplayer'} onClick={() => handleNavClick('multiplayer')} />
+
+          {isAdmin && (
+             <>
+               <div className="px-4 py-2 mt-6 text-[10px] font-black text-red-400 uppercase tracking-widest">Administração</div>
+               <NavItem icon={ShieldAlert} label="Painel Admin" sublabel="Controle de Usuários" active={currentView === 'admin_panel'} onClick={() => handleNavClick('admin_panel')} />
+             </>
+          )}
 
           <div className="px-4 py-2 mt-6 text-[10px] font-black text-legal-500 uppercase tracking-widest">Gestão de Conta</div>
           <NavItem icon={Crown} label="Planos" active={currentView === 'pricing'} onClick={() => handleNavClick('pricing')} badge={isPremium ? <div className="bg-legal-900 text-accent-gold text-[10px] px-1.5 rounded font-black border border-accent-gold/30">PRO</div> : <div className="bg-gray-700 text-gray-300 text-[10px] px-1.5 rounded">FREE</div>} />
@@ -119,6 +128,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, currentView, onC
           <NavItem icon={BookOpen} label="Cenários" active={currentView === 'scenarios'} onClick={() => handleNavClick('scenarios')} />
           <NavItem icon={PlayCircle} label="Simulação IA" active={currentView === 'simulation'} onClick={() => handleNavClick('simulation')} />
           <NavItem icon={Video} label="Audiência Live" active={currentView === 'multiplayer'} onClick={() => handleNavClick('multiplayer')} />
+          {isAdmin && <NavItem icon={ShieldAlert} label="Painel Admin" active={currentView === 'admin_panel'} onClick={() => handleNavClick('admin_panel')} />}
           <NavItem icon={Settings} label="Ajustes" active={currentView === 'settings'} onClick={() => handleNavClick('settings')} />
           <div className="flex-1"></div>
           <div className="border-t border-legal-800 pt-6">

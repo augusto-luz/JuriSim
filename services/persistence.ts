@@ -2,10 +2,11 @@
 import { ChatMessage, User, Scenario, StudentReport, CourtRole, UserPerformance, SocialMessage } from '../types';
 import { SCENARIOS } from '../constants';
 
-const DB_VERSION = '1.4';
+const DB_VERSION = '1.5';
 const KEYS = {
   VERSION: 'jurisim_db_v',
   USER: 'jurisim_user',
+  ALL_USERS: 'jurisim_all_users_list',
   CHAT_HISTORY: 'jurisim_chat_',
   SCENARIO_PROGRESS: 'jurisim_progress_',
   CUSTOM_SCENARIOS: 'jurisim_custom_scenarios_',
@@ -46,14 +47,43 @@ export const persistenceService = {
     } catch (e) { return null; }
   },
 
+  // Gerenciamento Global de Usuários (Bando de Dados do Admin)
+  getAllUsers: (): User[] => {
+    return persistenceService._safeGet(KEYS.ALL_USERS) || [];
+  },
+
+  saveUserGlobally: (user: User) => {
+    const users = persistenceService.getAllUsers();
+    const index = users.findIndex(u => u.id === user.id || u.email === user.email);
+    if (index !== -1) {
+      users[index] = { ...users[index], ...user };
+    } else {
+      users.push(user);
+    }
+    persistenceService._safeSave(KEYS.ALL_USERS, users);
+  },
+
+  deleteUser: (userId: string) => {
+    const users = persistenceService.getAllUsers().filter(u => u.id !== userId);
+    persistenceService._safeSave(KEYS.ALL_USERS, users);
+    localStorage.removeItem(`${KEYS.PERFORMANCE}${userId}`);
+    localStorage.removeItem(`${KEYS.FRIENDS}${userId}`);
+  },
+
   saveSession: (user: User, remember: boolean) => {
     const storage = remember ? localStorage : sessionStorage;
     storage.setItem(KEYS.USER, JSON.stringify(user));
+    persistenceService.saveUserGlobally(user);
   },
 
   restoreSession: (): User | null => {
     const userStored = sessionStorage.getItem(KEYS.USER) || localStorage.getItem(KEYS.USER);
-    return userStored ? JSON.parse(userStored) : null;
+    if (!userStored) return null;
+    const sessionUser = JSON.parse(userStored);
+    // Verifica se o usuário ainda existe e não está suspenso
+    const allUsers = persistenceService.getAllUsers();
+    const dbUser = allUsers.find(u => u.id === sessionUser.id);
+    return dbUser || null;
   },
 
   clearSession: () => {
@@ -74,7 +104,6 @@ export const persistenceService = {
   },
 
   saveChatHistory: (userId: string, scenarioId: string, messages: ChatMessage[]) => {
-    // Não cortamos mais em 30 mensagens para permitir estudo futuro completo
     persistenceService._safeSave(`${KEYS.CHAT_HISTORY}${userId}_${scenarioId}`, messages);
   },
 
@@ -120,7 +149,6 @@ export const persistenceService = {
     return rankings.sort((a, b) => (b.avgOratory + b.avgProcedural + b.avgEvidence) - (a.avgOratory + a.avgProcedural + a.avgEvidence));
   },
 
-  // Sistema Social
   addFriend: (userId: string, friendId: string) => {
     const friends = persistenceService._safeGet(`${KEYS.FRIENDS}${userId}`) || [];
     if (!friends.includes(friendId)) {
