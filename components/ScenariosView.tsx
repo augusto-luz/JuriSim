@@ -5,7 +5,7 @@ import { persistenceService } from '../services/persistence';
 import { Scenario, User, UserRole, UserPerformance, SocialMessage } from '../types';
 import { 
   Search, BookOpen, Play, FileText, PlusCircle, Users,
-  Trophy, Send, Scale, UserPlus, MessageCircle, Radar, Activity, Clock, ShieldCheck, CheckCircle, Fingerprint
+  Trophy, Send, Scale, UserPlus, MessageCircle, Radar, Activity, Clock, ShieldCheck, CheckCircle, Fingerprint, UserCheck, AlertCircle
 } from 'lucide-react';
 import { 
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar as RadarArea, ResponsiveContainer, Tooltip
@@ -27,6 +27,7 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
   const [selectedFriend, setSelectedFriend] = useState<UserPerformance | null>(null);
   const [socialChat, setSocialChat] = useState<SocialMessage[]>([]);
   const [socialInput, setSocialInput] = useState('');
+  const [socialStatus, setSocialStatus] = useState<{msg: string, type: 'error' | 'success'} | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { loadData(); }, [user.id, activeTab]);
@@ -46,8 +47,31 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
       const nativeProgress = SCENARIOS.map(s => ({ ...s, progress: persistenceService.getScenarioProgress(user.id, s.id) })).filter(s => s.progress > 0);
       setScenarios([...nativeProgress, ...custom].sort((a,b) => b.progress - a.progress));
     } else if (activeTab === 'social' || activeTab === 'ranking') {
-      setAllPerformances(persistenceService.getGlobalRankings(user));
+      const global = persistenceService.getGlobalRankings(user);
+      setAllPerformances(global);
       setFriendsIds(persistenceService.getFriends(user.id));
+    }
+  };
+
+  const handleAddFriend = (friendId: string) => {
+    if (friendId === user.id) {
+        setSocialStatus({msg: "Você não pode adicionar a si mesmo.", type: 'error'});
+        return;
+    }
+    persistenceService.addFriend(user.id, friendId);
+    setFriendsIds(persistenceService.getFriends(user.id));
+    setSocialStatus({msg: "Colega adicionado com sucesso!", type: 'success'});
+    setTimeout(() => setSocialStatus(null), 3000);
+  };
+
+  const handleQuickAdd = () => {
+    const target = allPerformances.find(p => p.userId === socialSearch || p.userName.toLowerCase() === socialSearch.toLowerCase());
+    if (target) {
+        handleAddFriend(target.userId);
+        setSocialSearch('');
+    } else {
+        setSocialStatus({msg: "Usuário não encontrado. Verifique o ID exato.", type: 'error'});
+        setTimeout(() => setSocialStatus(null), 3000);
     }
   };
 
@@ -102,31 +126,61 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in slide-in-from-bottom-4">
            {/* Pesquisa e Amigos */}
            <div className="lg:col-span-1 space-y-6">
-              <div className="relative">
-                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
-                 <input value={socialSearch} onChange={e=>setSocialSearch(e.target.value)} placeholder="Buscar por Nome ou ID..." className="w-full pl-12 pr-4 py-3 bg-white border rounded-xl text-sm" />
+              <div className="space-y-2">
+                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Pesquisar ou Adicionar por ID</label>
+                 <div className="relative flex gap-2">
+                    <div className="relative flex-1">
+                       <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
+                       <input 
+                          value={socialSearch} 
+                          onChange={e=>setSocialSearch(e.target.value)} 
+                          placeholder="Nome ou ID do colega..." 
+                          className="w-full pl-12 pr-4 py-3 bg-white border rounded-xl text-sm focus:ring-2 focus:ring-accent-gold outline-none transition" 
+                       />
+                    </div>
+                    <button 
+                       onClick={handleQuickAdd}
+                       className="px-4 bg-legal-900 text-white rounded-xl hover:bg-accent-gold hover:text-legal-900 transition flex items-center justify-center shadow-md active:scale-95"
+                       title="Adicionar Amigo Direto"
+                    >
+                       <UserPlus size={18}/>
+                    </button>
+                 </div>
+                 {socialStatus && (
+                    <div className={`mt-2 p-2 rounded-lg text-[10px] font-bold flex items-center gap-2 animate-in slide-in-from-top-1 ${socialStatus.type === 'error' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                       {socialStatus.type === 'error' ? <AlertCircle size={12}/> : <CheckCircle size={12}/>}
+                       {socialStatus.msg}
+                    </div>
+                 )}
               </div>
               
               <div className="bg-white rounded-3xl border p-6 space-y-4 shadow-sm">
-                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Advogados na Rede</h4>
-                 <div className="space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar">
-                    {filteredSocial.map(p => (
-                       <div key={p.userId} className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 transition group">
-                          <div className="flex items-center gap-3">
-                             <div className="w-10 h-10 rounded-full bg-legal-900 text-white flex items-center justify-center font-bold text-xs">{p.userName.charAt(0)}</div>
-                             <div>
-                                <p className="text-xs font-bold text-legal-900">{p.userName}</p>
-                                <p className="text-[9px] text-slate-400 font-mono">ID: {p.userId.substring(0, 8)}...</p>
+                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-between">
+                    <span>Advogados na Rede</span>
+                    <span className="bg-slate-100 px-2 py-0.5 rounded-full text-slate-500">{filteredSocial.length}</span>
+                 </h4>
+                 <div className="space-y-2 max-h-[450px] overflow-y-auto custom-scrollbar pr-2">
+                    {filteredSocial.length > 0 ? filteredSocial.map(p => (
+                       <div key={p.userId} className={`flex items-center justify-between p-3 rounded-xl transition-all border ${selectedFriend?.userId === p.userId ? 'bg-slate-50 border-slate-200' : 'bg-white border-transparent hover:border-slate-100 hover:bg-slate-50'}`}>
+                          <div className="flex items-center gap-3 overflow-hidden">
+                             <div className="w-10 h-10 rounded-full bg-legal-900 text-white flex items-center justify-center font-bold text-xs shrink-0">{p.userName.charAt(0)}</div>
+                             <div className="overflow-hidden">
+                                <p className="text-xs font-bold text-legal-900 truncate">{p.userName}</p>
+                                <p className="text-[9px] text-slate-400 font-mono truncate">ID: {p.userId}</p>
                              </div>
                           </div>
-                          <div className="flex gap-1">
-                             <button onClick={() => setSelectedFriend(p)} className="p-2 text-legal-400 hover:text-legal-900 transition"><MessageCircle size={16}/></button>
-                             {!friendsIds.includes(p.userId) && (
-                                <button onClick={() => { persistenceService.addFriend(user.id, p.userId); loadData(); }} className="p-2 text-accent-gold hover:text-yellow-600 transition"><UserPlus size={16}/></button>
+                          <div className="flex gap-1 shrink-0">
+                             <button onClick={() => setSelectedFriend(p)} className="p-2 text-legal-400 hover:text-legal-900 transition" title="Ver Perfil/Chat"><MessageCircle size={16}/></button>
+                             {friendsIds.includes(p.userId) ? (
+                                <div className="p-2 text-green-500" title="Já é seu amigo"><UserCheck size={16}/></div>
+                             ) : (
+                                <button onClick={() => handleAddFriend(p.userId)} className="p-2 text-accent-gold hover:text-yellow-600 transition" title="Adicionar Amigo"><UserPlus size={16}/></button>
                              )}
                           </div>
                        </div>
-                    ))}
+                    )) : (
+                       <div className="py-8 text-center text-slate-400 text-xs italic">Nenhum colega encontrado com este critério.</div>
+                    )}
                  </div>
               </div>
            </div>
@@ -134,8 +188,15 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
            {/* Perfil e Chat do Amigo Selecionado */}
            <div className="lg:col-span-2 space-y-6">
               {selectedFriend ? (
-                 <div className="space-y-6">
-                    <div className="bg-white p-8 rounded-[2.5rem] border shadow-sm flex flex-col md:flex-row gap-8 items-center">
+                 <div className="space-y-6 animate-in fade-in duration-300">
+                    <div className="bg-white p-8 rounded-[2.5rem] border shadow-sm flex flex-col md:flex-row gap-8 items-center relative overflow-hidden">
+                       <div className="absolute top-0 right-0 p-4">
+                          {friendsIds.includes(selectedFriend.userId) ? (
+                             <span className="text-[9px] font-black text-green-500 bg-green-50 px-3 py-1 rounded-full border border-green-100 uppercase tracking-widest">Conectado</span>
+                          ) : (
+                             <button onClick={() => handleAddFriend(selectedFriend.userId)} className="text-[9px] font-black text-accent-gold bg-accent-gold/5 px-3 py-1 rounded-full border border-accent-gold/20 hover:bg-accent-gold hover:text-white transition uppercase tracking-widest">Conectar</button>
+                          )}
+                       </div>
                        <div className="w-32 h-32 shrink-0">
                           <ResponsiveContainer width="100%" height="100%">
                              <RadarChart cx="50%" cy="50%" outerRadius="80%" data={[
@@ -145,7 +206,7 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
                              ]}>
                                 <PolarGrid stroke="#e2e8f0" />
                                 <PolarAngleAxis dataKey="s" tick={false} />
-                                <RadarArea dataKey="v" stroke="#102a43" fill="#102a43" fillOpacity={0.6} />
+                                <RadarArea dataKey="v" stroke="#c5a065" fill="#c5a065" fillOpacity={0.6} />
                              </RadarChart>
                           </ResponsiveContainer>
                        </div>
@@ -153,38 +214,56 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
                           <h3 className="text-2xl font-serif font-bold text-legal-900">{selectedFriend.userName}</h3>
                           <p className="text-[10px] font-mono text-slate-400 flex items-center justify-center md:justify-start gap-1 mt-1"><Fingerprint size={12}/> ID: {selectedFriend.userId}</p>
                           <div className="flex flex-wrap justify-center md:justify-start gap-4 mt-4">
-                             <div className="text-center"><p className="text-[10px] font-black text-slate-400 uppercase">Oratória</p><p className="font-bold">{selectedFriend.avgOratory}%</p></div>
-                             <div className="text-center"><p className="text-[10px] font-black text-slate-400 uppercase">Processual</p><p className="font-bold">{selectedFriend.avgProcedural}%</p></div>
-                             <div className="text-center"><p className="text-[10px] font-black text-slate-400 uppercase">Provas</p><p className="font-bold">{selectedFriend.avgEvidence}%</p></div>
+                             <div className="text-center bg-slate-50 px-4 py-2 rounded-xl border border-slate-100"><p className="text-[10px] font-black text-slate-400 uppercase">Oratória</p><p className="font-bold text-legal-900">{selectedFriend.avgOratory}%</p></div>
+                             <div className="text-center bg-slate-50 px-4 py-2 rounded-xl border border-slate-100"><p className="text-[10px] font-black text-slate-400 uppercase">Processual</p><p className="font-bold text-legal-900">{selectedFriend.avgProcedural}%</p></div>
+                             <div className="text-center bg-slate-50 px-4 py-2 rounded-xl border border-slate-100"><p className="text-[10px] font-black text-slate-400 uppercase">Provas</p><p className="font-bold text-legal-900">{selectedFriend.avgEvidence}%</p></div>
                           </div>
                        </div>
                     </div>
 
                     <div className="bg-white rounded-[2.5rem] border shadow-sm h-[400px] flex flex-col overflow-hidden">
                        <div className="p-6 border-b bg-slate-50 flex justify-between items-center">
-                          <span className="text-xs font-bold text-legal-900">Mensagens Privadas</span>
-                          <button onClick={() => setSelectedFriend(null)} className="text-[10px] font-black text-red-400 hover:text-red-600 uppercase">Fechar</button>
+                          <div className="flex items-center gap-2">
+                             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                             <span className="text-xs font-bold text-legal-900">Mensagens Privadas</span>
+                          </div>
+                          <button onClick={() => setSelectedFriend(null)} className="text-[10px] font-black text-red-400 hover:text-red-600 uppercase transition">Fechar Chat</button>
                        </div>
-                       <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
-                          {socialChat.map(m => (
+                       <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-slate-50/30">
+                          {socialChat.length > 0 ? socialChat.map(m => (
                              <div key={m.id} className={`flex ${m.fromId === user.id ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`p-3 rounded-2xl text-xs max-w-[70%] ${m.fromId === user.id ? 'bg-legal-900 text-white rounded-tr-none' : 'bg-slate-100 text-legal-900 rounded-tl-none'}`}>
+                                <div className={`p-4 rounded-2xl text-xs max-w-[70%] shadow-sm ${m.fromId === user.id ? 'bg-legal-900 text-white rounded-tr-none' : 'bg-white text-legal-900 border border-slate-100 rounded-tl-none'}`}>
                                    {m.text}
+                                   <p className="text-[8px] mt-1 opacity-50 text-right">{new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
                                 </div>
                              </div>
-                          ))}
+                          )) : (
+                             <div className="h-full flex flex-col items-center justify-center text-slate-300 italic text-xs">
+                                <MessageCircle size={32} className="mb-2 opacity-20"/>
+                                Inicie uma conversa com este colega.
+                             </div>
+                          )}
                           <div ref={chatEndRef}/>
                        </div>
-                       <div className="p-4 border-t bg-slate-50 flex gap-2">
-                          <input value={socialInput} onChange={e=>setSocialInput(e.target.value)} onKeyDown={e=>e.key==='Enter' && handleSendSocial()} placeholder="Escreva uma mensagem..." className="flex-1 px-4 py-2 border rounded-xl text-xs" />
-                          <button onClick={handleSendSocial} className="p-2 bg-legal-900 text-white rounded-xl"><Send size={16}/></button>
+                       <div className="p-4 border-t bg-white flex gap-2">
+                          <input 
+                             value={socialInput} 
+                             onChange={e=>setSocialInput(e.target.value)} 
+                             onKeyDown={e=>e.key==='Enter' && handleSendSocial()} 
+                             placeholder="Escreva sua mensagem jurídica..." 
+                             className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:border-accent-gold transition" 
+                          />
+                          <button onClick={handleSendSocial} className="w-12 h-12 bg-legal-900 text-white rounded-xl flex items-center justify-center hover:bg-accent-gold hover:text-legal-900 transition-all shadow-lg active:scale-95">
+                             <Send size={18}/>
+                          </button>
                        </div>
                     </div>
                  </div>
               ) : (
-                 <div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-50 p-12 border-2 border-dashed rounded-[2.5rem]">
-                    <Users size={64} className="mb-4"/>
-                    <p className="font-bold">Selecione um colega para ver o radar de performance e iniciar um chat.</p>
+                 <div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-50 p-12 border-2 border-dashed rounded-[2.5rem] bg-white">
+                    <Users size={64} className="mb-4 text-slate-200"/>
+                    <h3 className="text-xl font-serif font-bold text-slate-400">Networking Ativo</h3>
+                    <p className="text-sm max-w-xs text-center mt-2">Selecione um colega da rede ou pesquise pelo ID para ver sua performance e iniciar uma troca de conhecimento.</p>
                  </div>
               )}
            </div>
@@ -207,9 +286,9 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
                         </div>
                      </div>
                      <div className="flex gap-8 text-right hidden md:flex">
-                        <div><p className="text-[10px] font-black text-slate-400 uppercase">Oratória</p><p className="font-bold">{p.avgOratory}%</p></div>
-                        <div><p className="text-[10px] font-black text-slate-400 uppercase">Processual</p><p className="font-bold">{p.avgProcedural}%</p></div>
-                        <div><p className="text-[10px] font-black text-slate-400 uppercase">Score Geral</p><p className="font-bold text-legal-900">{Math.round((p.avgOratory + p.avgProcedural + p.avgEvidence)/3)}%</p></div>
+                        <div><p className="text-[10px] font-black text-slate-400 uppercase">Oratória</p><p className="font-bold text-legal-900">{p.avgOratory}%</p></div>
+                        <div><p className="text-[10px] font-black text-slate-400 uppercase">Processual</p><p className="font-bold text-legal-900">{p.avgProcedural}%</p></div>
+                        <div><p className="text-[10px] font-black text-slate-400 uppercase">Score Geral</p><p className="font-bold text-accent-gold">{Math.round((p.avgOratory + p.avgProcedural + p.avgEvidence)/3)}%</p></div>
                      </div>
                   </div>
                ))}
