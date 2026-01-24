@@ -66,13 +66,18 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
   };
 
   const handleQuickAdd = () => {
-    // CORREÇÃO: Busca na lista global de usuários para evitar erro de ID não encontrado
-    const target = allUsers.find(u => u.id === socialSearch || u.email.toLowerCase() === socialSearch.toLowerCase());
+    const searchLow = socialSearch.trim().toLowerCase();
+    // BUSCA INSENSÍVEL A CASO PARA ID OU EMAIL
+    const target = allUsers.find(u => 
+      u.id.toLowerCase() === searchLow || 
+      u.email.toLowerCase() === searchLow
+    );
+
     if (target) {
         handleAddFriend(target.id);
         setSocialSearch('');
     } else {
-        setSocialStatus({msg: "Usuário não encontrado. Verifique o ID exato nas configurações do colega.", type: 'error'});
+        setSocialStatus({msg: "Usuário não encontrado. Verifique o ID exato.", type: 'error'});
         setTimeout(() => setSocialStatus(null), 4000);
     }
   };
@@ -85,7 +90,6 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
     setSocialInput('');
   };
 
-  // Filtra os usuários que podem ser amigos, excluindo o atual e garantindo que existem na base
   const filteredSocial = allUsers.filter(u => 
     u.id !== user.id && u.status === 'active' && (
       u.name.toLowerCase().includes(socialSearch.toLowerCase()) || 
@@ -134,7 +138,7 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
                        <input 
                           value={socialSearch} 
                           onChange={e=>setSocialSearch(e.target.value)} 
-                          placeholder="Nome ou ID do colega..." 
+                          placeholder="Ex: admin-master ou ID-colega" 
                           className="w-full pl-12 pr-4 py-3 bg-white border rounded-xl text-sm focus:ring-2 focus:ring-accent-gold outline-none transition" 
                        />
                     </div>

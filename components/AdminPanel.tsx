@@ -4,7 +4,7 @@ import { persistenceService } from '../services/persistence';
 import { User, UserRole } from '../types';
 import { 
   Users, Search, ShieldAlert, Edit, Trash2, Ban, CheckCircle, Mail, Key, 
-  Database, Fingerprint, Clock, ExternalLink, MoreVertical, X, Save, AlertTriangle
+  Database, Fingerprint, Clock, ExternalLink, MoreVertical, X, Save, AlertTriangle, Copy
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
@@ -56,6 +56,11 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
+  const copyUserId = (id: string) => {
+    navigator.clipboard.writeText(id);
+    notify("ID de Identificação copiado!");
+  };
+
   const filteredUsers = users.filter(u => 
     u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -86,7 +91,6 @@ export const AdminPanel: React.FC = () => {
         </div>
       )}
 
-      {/* Busca e Filtros */}
       <div className="relative">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20}/>
         <input 
@@ -97,7 +101,6 @@ export const AdminPanel: React.FC = () => {
         />
       </div>
 
-      {/* Tabela de Usuários */}
       <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
         <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full text-left">
@@ -106,7 +109,7 @@ export const AdminPanel: React.FC = () => {
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Identidade</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Função / Plano</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Data de Registro</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">ID de Identificação</th>
                 <th className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Ações Master</th>
               </tr>
             </thead>
@@ -136,8 +139,12 @@ export const AdminPanel: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-1 text-[10px] text-slate-500 font-bold">
-                       <Clock size={12}/> ID: {u.id.substring(0, 8)}...
+                    <div className="flex items-center gap-2 group cursor-pointer" onClick={() => copyUserId(u.id)}>
+                       <Fingerprint size={12} className="text-slate-400 group-hover:text-legal-900"/>
+                       <code className="text-[10px] text-slate-500 font-mono bg-slate-100 px-2 py-1 rounded group-hover:bg-slate-200 transition-colors">
+                         {u.id}
+                       </code>
+                       <Copy size={10} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity"/>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-right">
@@ -159,7 +166,6 @@ export const AdminPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal de Edição */}
       {editingUser && (
         <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4">
            <form onSubmit={handleSaveEdit} className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl overflow-hidden animate-in zoom-in-95">

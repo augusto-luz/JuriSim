@@ -30,7 +30,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     const isMasterEmail = formData.email.toLowerCase() === MASTER_ADMIN_EMAIL;
     
-    // Validação especial para o Admin Master
     if (isMasterEmail && formData.password !== MASTER_ADMIN_PASS) {
       setError("Senha administrativa incorreta.");
       return;
@@ -38,7 +37,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     setIsLoading(true);
 
-    // Lógica de Registro
     if (isRegistering && !isConfirmingEmail) {
       setTimeout(() => {
         const allUsers = persistenceService.getAllUsers();
@@ -50,13 +48,12 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           return;
         }
 
-        // SALVAMENTO REAL NO BANCO DE DADOS DURANTE O CADASTRO
         const newUser: UserType = {
           id: `user-${Math.random().toString(36).substr(2, 9)}`,
           name: formData.name,
           email: formData.email,
           role: formData.role,
-          password: formData.password, // Salva a senha para logins futuros
+          password: formData.password,
           status: 'active',
           plan: formData.role === UserRole.INSTRUCTOR ? 'PREMIUM' : 'FREE'
         };
@@ -68,34 +65,32 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       return;
     }
 
-    // Lógica de Login ou Finalização de Cadastro
     setTimeout(() => {
       const allUsers = persistenceService.getAllUsers();
       let targetUser = allUsers.find(u => u.email.toLowerCase() === formData.email.toLowerCase());
 
-      // Se for login e não encontrar usuário
       if (!isRegistering && !targetUser && !isMasterEmail) {
         setError("Usuário não encontrado. Crie uma conta para acessar.");
         setIsLoading(false);
         return;
       }
 
-      // Validação de senha para usuários comuns (simples para o MVP)
       if (!isRegistering && targetUser && targetUser.password && targetUser.password !== formData.password) {
         setError("Senha incorreta. Verifique seus dados.");
         setIsLoading(false);
         return;
       }
 
-      // Se for o Admin Master e ainda não estiver no banco, cria agora
-      if (isMasterEmail && !targetUser) {
+      // Garante que o ID do Master Admin seja sempre 'admin-master'
+      if (isMasterEmail && (!targetUser || targetUser.id !== 'admin-master')) {
         targetUser = {
           id: 'admin-master',
           name: "Administrador Augusto",
           email: MASTER_ADMIN_EMAIL,
           role: UserRole.ADMIN,
           status: 'active',
-          plan: 'PREMIUM'
+          plan: 'PREMIUM',
+          password: MASTER_ADMIN_PASS
         };
         persistenceService.saveUserGlobally(targetUser);
       }
