@@ -5,10 +5,12 @@ import { persistenceService } from '../services/persistence';
 import { Scenario, User, UserRole, UserPerformance, SocialMessage } from '../types';
 import { 
   Search, BookOpen, Play, FileText, PlusCircle, Users,
-  Trophy, Send, Scale, UserPlus, MessageCircle, Radar, Activity, Clock, ShieldCheck, CheckCircle, Fingerprint, UserCheck, AlertCircle, Plus, Trash2
+  Trophy, Send, Scale, UserPlus, MessageCircle, Radar, Activity, Clock, ShieldCheck, CheckCircle, Fingerprint, UserCheck, AlertCircle, Plus, Trash2,
+  TrendingUp, Award, Medal, Target
 } from 'lucide-react';
 import { 
-  RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar as RadarArea, ResponsiveContainer, Tooltip
+  RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar as RadarArea, ResponsiveContainer, Tooltip,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell
 } from 'recharts';
 
 interface ScenariosViewProps {
@@ -27,7 +29,6 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
   const [friendsIds, setFriendsIds] = useState<string[]>([]);
   const [selectedFriend, setSelectedFriend] = useState<UserPerformance | null>(null);
   const [socialChat, setSocialChat] = useState<SocialMessage[]>([]);
-  const [socialInput, setSocialInput] = useState('');
   const [socialStatus, setSocialStatus] = useState<{msg: string, type: 'error' | 'success'} | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -99,6 +100,14 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
       u.id.toLowerCase().includes(socialSearch.toLowerCase())
     )
   ).map(u => persistenceService.getUserPerformance(u.id, u.name));
+
+  const sortedRankings = useMemo(() => {
+    return [...allPerformances].sort((a, b) => {
+      const avgA = (a.avgOratory + a.avgProcedural + a.avgEvidence) / 3;
+      const avgB = (b.avgOratory + b.avgProcedural + b.avgEvidence) / 3;
+      return avgB - avgA;
+    });
+  }, [allPerformances]);
 
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8 animate-in fade-in pb-24">
@@ -195,8 +204,8 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
                     <div className="bg-white p-8 rounded-[2.5rem] border shadow-sm flex flex-col md:flex-row gap-8 items-center relative overflow-hidden">
                        <div className="w-32 h-32 shrink-0">
                           <ResponsiveContainer width="100%" height="100%">
-                             <RadarChart cx="50%" cy="50%" outerRadius="80%" data={[{ s: 'O', v: selectedFriend.avgOratory }, { s: 'P', v: selectedFriend.avgProcedural }, { s: 'E', v: selectedFriend.avgEvidence }]}>
-                                <PolarGrid stroke="#e2e8f0" /><PolarAngleAxis dataKey="s" tick={false} /><RadarArea dataKey="v" stroke="#c5a065" fill="#c5a065" fillOpacity={0.6} />
+                             <RadarChart cx="50%" cy="50%" outerRadius="80%" data={[{ s: 'Oratória', v: selectedFriend.avgOratory }, { s: 'Processual', v: selectedFriend.avgProcedural }, { s: 'Provas', v: selectedFriend.avgEvidence }]}>
+                                <PolarGrid stroke="#e2e8f0" /><PolarAngleAxis dataKey="s" tick={{fontSize: 10, fill: '#64748b'}} /><RadarArea dataKey="v" stroke="#c5a065" fill="#c5a065" fillOpacity={0.6} />
                              </RadarChart>
                           </ResponsiveContainer>
                        </div>
@@ -216,6 +225,93 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
            </div>
         </div>
       )}
+
+      {activeTab === 'ranking' && (
+         <div className="space-y-8 animate-in slide-in-from-bottom-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+               {sortedRankings.slice(0, 3).map((rank, i) => (
+                  <div key={rank.userId} className={`bg-white p-8 rounded-[2.5rem] border shadow-md relative overflow-hidden flex flex-col items-center text-center ${i === 0 ? 'ring-2 ring-accent-gold md:scale-105' : ''}`}>
+                     {i === 0 && <div className="absolute top-0 right-0 bg-accent-gold text-legal-900 px-4 py-1 rounded-bl-xl font-black text-[10px] uppercase tracking-widest">Master Elite</div>}
+                     <div className="relative mb-6">
+                        <div className={`w-20 h-20 rounded-full flex items-center justify-center font-bold text-xl border-4 ${i === 0 ? 'bg-legal-900 text-white border-accent-gold shadow-xl' : 'bg-slate-100 text-slate-400 border-white shadow-sm'}`}>
+                           {rank.userName.charAt(0)}
+                        </div>
+                        <div className={`absolute -bottom-2 -right-2 w-10 h-10 rounded-full border-4 border-white flex items-center justify-center text-white font-black shadow-lg ${i === 0 ? 'bg-accent-gold' : i === 1 ? 'bg-slate-400' : 'bg-amber-600'}`}>
+                           {i + 1}
+                        </div>
+                     </div>
+                     <h4 className="text-lg font-serif font-bold text-legal-900 truncate w-full">{rank.userName}</h4>
+                     <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mt-1 mb-4">{rank.totalSimulations} Audiências</p>
+                     <div className="w-full grid grid-cols-3 gap-2 border-t pt-4">
+                        <div className="text-center"><p className="text-[9px] font-bold text-slate-400 uppercase">ORA</p><p className="text-xs font-black text-legal-900">{rank.avgOratory}%</p></div>
+                        <div className="text-center"><p className="text-[9px] font-bold text-slate-400 uppercase">PROC</p><p className="text-xs font-black text-legal-900">{rank.avgProcedural}%</p></div>
+                        <div className="text-center"><p className="text-[9px] font-bold text-slate-400 uppercase">PROV</p><p className="text-xs font-black text-legal-900">{rank.avgEvidence}%</p></div>
+                     </div>
+                  </div>
+               ))}
+            </div>
+
+            <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
+               <div className="p-8 border-b bg-slate-50 flex justify-between items-center">
+                  <div>
+                     <h3 className="text-xl font-serif font-bold text-legal-900">Leaderboard Global</h3>
+                     <p className="text-xs text-slate-500">Métricas atualizadas baseadas em avaliações de IA.</p>
+                  </div>
+                  <div className="flex gap-4">
+                     <div className="text-right">
+                        <p className="text-[10px] font-black text-slate-400 uppercase">Total Praticantes</p>
+                        <p className="text-lg font-black text-legal-900">{allPerformances.length}</p>
+                     </div>
+                  </div>
+               </div>
+               <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                     <thead>
+                        <tr className="bg-white border-b">
+                           <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase">Posição</th>
+                           <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase">Advogado / Estudante</th>
+                           <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase">Score Geral</th>
+                           <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase">Destaque</th>
+                           <th className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase">Ações</th>
+                        </tr>
+                     </thead>
+                     <tbody className="divide-y divide-slate-100">
+                        {sortedRankings.map((rank, i) => (
+                           <tr key={rank.userId} className={`hover:bg-slate-50 transition-colors ${rank.userId === user.id ? 'bg-accent-gold/5' : ''}`}>
+                              <td className="px-6 py-4">
+                                 <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black ${i < 3 ? 'bg-legal-900 text-accent-gold' : 'bg-slate-100 text-slate-400'}`}>
+                                    {i + 1}
+                                 </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                 <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-[10px] uppercase">{rank.userName.charAt(0)}</div>
+                                    <span className="text-xs font-bold text-legal-900">{rank.userName}</span>
+                                 </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                 <div className="flex items-center gap-4">
+                                    <div className="flex-1 min-w-[100px] h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                       <div className="h-full bg-legal-900 rounded-full" style={{width: `${(rank.avgOratory + rank.avgProcedural + rank.avgEvidence) / 3}%`}}/>
+                                    </div>
+                                    <span className="text-xs font-black text-legal-900">{Math.round((rank.avgOratory + rank.avgProcedural + rank.avgEvidence) / 3)}%</span>
+                                 </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                 {rank.avgOratory > 80 && <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] font-black uppercase tracking-widest mr-2">Orador</span>}
+                                 {rank.avgProcedural > 80 && <span className="px-2 py-0.5 bg-purple-50 text-purple-600 rounded text-[9px] font-black uppercase tracking-widest">Processualista</span>}
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                 <button onClick={() => { setSelectedFriend(rank); setActiveTab('social'); }} className="p-2 text-slate-400 hover:text-legal-900 transition shadow-sm"><Activity size={16}/></button>
+                              </td>
+                           </tr>
+                        ))}
+                     </tbody>
+                  </table>
+               </div>
+            </div>
+         </div>
+      )}
     </div>
   );
 };
@@ -226,7 +322,7 @@ const CaseCard = ({ scenario, onStart, currentUserId, onDelete }: any) => {
   const isNative = scenario.id === '1' || scenario.id === '2' || scenario.id === '3';
 
   return (
-    <div className={`bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm hover:shadow-xl transition-all flex flex-col md:flex-row group ${isCompleted ? 'border-green-100 bg-green-50/5' : ''}`}>
+    <div className={`bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm hover:shadow-lg transition-all flex flex-col md:flex-row group ${isCompleted ? 'border-green-100 bg-green-50/5' : ''}`}>
        <div className="p-8 flex-1">
           <div className="flex justify-between items-start mb-4">
              <div className="flex gap-2">

@@ -34,7 +34,7 @@ export const InstructorPanel: React.FC<InstructorPanelProps> = ({ user }) => {
   }, [isApproved, user.id]);
 
   const loadData = () => {
-    setClasses(persistenceService.getClasses(user.id));
+    setClasses([...persistenceService.getClasses(user.id)]);
     setAllUsers(persistenceService.getAllUsers());
     setReports(persistenceService.getAllReports());
     setCustomScenarios(persistenceService.getCustomScenarios(user.id));
@@ -60,7 +60,8 @@ export const InstructorPanel: React.FC<InstructorPanelProps> = ({ user }) => {
     if (confirm("Deseja realmente excluir esta turma? Todos os vínculos de alunos serão removidos permanentemente.")) {
       persistenceService.deleteClass(id);
       if (selectedClass?.id === id) setSelectedClass(null);
-      loadData();
+      // Forçar recarregamento do estado para refletir a exclusão
+      setTimeout(() => loadData(), 50);
     }
   };
 
