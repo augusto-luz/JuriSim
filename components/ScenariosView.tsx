@@ -5,7 +5,7 @@ import { persistenceService } from '../services/persistence';
 import { Scenario, User, UserRole, UserPerformance, SocialMessage } from '../types';
 import { 
   Search, BookOpen, Play, FileText, PlusCircle, Users,
-  Trophy, Send, Scale, UserPlus, MessageCircle, Radar, Activity, Clock, ShieldCheck, CheckCircle
+  Trophy, Send, Scale, UserPlus, MessageCircle, Radar, Activity, Clock, ShieldCheck, CheckCircle, Fingerprint
 } from 'lucide-react';
 import { 
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar as RadarArea, ResponsiveContainer, Tooltip
@@ -60,7 +60,10 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
   const friendsIds = useMemo(() => persistenceService.getFriends(user.id), [user.id]);
   
   const filteredSocial = allPerformances.filter(p => 
-    p.userId !== user.id && p.userName.toLowerCase().includes(socialSearch.toLowerCase())
+    p.userId !== user.id && (
+      p.userName.toLowerCase().includes(socialSearch.toLowerCase()) || 
+      p.userId.toLowerCase().includes(socialSearch.toLowerCase())
+    )
   );
 
   return (
@@ -101,7 +104,7 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
            <div className="lg:col-span-1 space-y-6">
               <div className="relative">
                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
-                 <input value={socialSearch} onChange={e=>setSocialSearch(e.target.value)} placeholder="Buscar advogados..." className="w-full pl-12 pr-4 py-3 bg-white border rounded-xl text-sm" />
+                 <input value={socialSearch} onChange={e=>setSocialSearch(e.target.value)} placeholder="Buscar por Nome ou ID..." className="w-full pl-12 pr-4 py-3 bg-white border rounded-xl text-sm" />
               </div>
               
               <div className="bg-white rounded-3xl border p-6 space-y-4 shadow-sm">
@@ -113,7 +116,7 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
                              <div className="w-10 h-10 rounded-full bg-legal-900 text-white flex items-center justify-center font-bold text-xs">{p.userName.charAt(0)}</div>
                              <div>
                                 <p className="text-xs font-bold text-legal-900">{p.userName}</p>
-                                <p className="text-[9px] text-slate-400 uppercase font-bold">{p.totalSimulations} Simulações</p>
+                                <p className="text-[9px] text-slate-400 font-mono">ID: {p.userId.substring(0, 8)}...</p>
                              </div>
                           </div>
                           <div className="flex gap-1">
@@ -148,6 +151,7 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
                        </div>
                        <div className="text-center md:text-left flex-1">
                           <h3 className="text-2xl font-serif font-bold text-legal-900">{selectedFriend.userName}</h3>
+                          <p className="text-[10px] font-mono text-slate-400 flex items-center justify-center md:justify-start gap-1 mt-1"><Fingerprint size={12}/> ID: {selectedFriend.userId}</p>
                           <div className="flex flex-wrap justify-center md:justify-start gap-4 mt-4">
                              <div className="text-center"><p className="text-[10px] font-black text-slate-400 uppercase">Oratória</p><p className="font-bold">{selectedFriend.avgOratory}%</p></div>
                              <div className="text-center"><p className="text-[10px] font-black text-slate-400 uppercase">Processual</p><p className="font-bold">{selectedFriend.avgProcedural}%</p></div>

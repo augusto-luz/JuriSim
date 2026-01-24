@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { User } from '../types';
-import { User as UserIcon, LogOut, Trash2 } from 'lucide-react';
+import { User as UserIcon, LogOut, Trash2, Fingerprint, Copy } from 'lucide-react';
 import { persistenceService } from '../services/persistence';
 
 interface SettingsProps {
@@ -12,11 +12,15 @@ interface SettingsProps {
 export const Settings: React.FC<SettingsProps> = ({ user, onLogout }) => {
   const handleReset = () => {
     if(confirm("Tem certeza? Isso apagará todo seu histórico de conversas e progresso neste navegador.")) {
-        // Fix: resetAll is now correctly defined in persistenceService
         persistenceService.resetAll();
         onLogout();
         window.location.reload();
     }
+  };
+
+  const copyId = () => {
+    navigator.clipboard.writeText(user.id);
+    alert("ID copiado para a área de transferência!");
   };
 
   return (
@@ -27,10 +31,21 @@ export const Settings: React.FC<SettingsProps> = ({ user, onLogout }) => {
         
         {/* Profile Section */}
         <section className="bg-white p-6 rounded-xl shadow-sm border border-legal-100">
-           <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><UserIcon size={20}/> Perfil</h2>
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+           <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><UserIcon size={20}/> Perfil Profissional</h2>
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="md:col-span-2">
+                 <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1"><Fingerprint size={12}/> ID de Identificação (Use para adicionar amigos)</label>
+                 <div className="mt-1 flex gap-2">
+                    <div className="flex-1 p-3 bg-slate-100 rounded-lg text-legal-900 font-mono text-sm border border-slate-200">
+                       {user.id}
+                    </div>
+                    <button onClick={copyId} className="p-3 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition text-legal-600 shadow-sm" title="Copiar ID">
+                       <Copy size={18}/>
+                    </button>
+                 </div>
+              </div>
               <div>
-                 <label className="text-xs font-bold text-gray-500 uppercase">Nome</label>
+                 <label className="text-xs font-bold text-gray-500 uppercase">Nome Completo</label>
                  <div className="mt-1 p-3 bg-gray-50 rounded-lg text-gray-700 font-medium border border-gray-200">
                     {user.name}
                  </div>
