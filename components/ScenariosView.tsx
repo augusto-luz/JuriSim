@@ -23,6 +23,7 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
   const [searchTerm, setSearchTerm] = useState('');
   const [socialSearch, setSocialSearch] = useState('');
   const [allPerformances, setAllPerformances] = useState<UserPerformance[]>([]);
+  const [friendsIds, setFriendsIds] = useState<string[]>([]);
   const [selectedFriend, setSelectedFriend] = useState<UserPerformance | null>(null);
   const [socialChat, setSocialChat] = useState<SocialMessage[]>([]);
   const [socialInput, setSocialInput] = useState('');
@@ -46,6 +47,7 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
       setScenarios([...nativeProgress, ...custom].sort((a,b) => b.progress - a.progress));
     } else if (activeTab === 'social' || activeTab === 'ranking') {
       setAllPerformances(persistenceService.getGlobalRankings(user));
+      setFriendsIds(persistenceService.getFriends(user.id));
     }
   };
 
@@ -57,8 +59,6 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
     setSocialInput('');
   };
 
-  const friendsIds = useMemo(() => persistenceService.getFriends(user.id), [user.id]);
-  
   const filteredSocial = allPerformances.filter(p => 
     p.userId !== user.id && (
       p.userName.toLowerCase().includes(socialSearch.toLowerCase()) || 
