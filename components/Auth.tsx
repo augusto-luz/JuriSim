@@ -30,6 +30,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     const isMasterEmail = formData.email.toLowerCase() === MASTER_ADMIN_EMAIL;
     
+    // Validação especial para o Admin Master
     if (isMasterEmail && formData.password !== MASTER_ADMIN_PASS) {
       setError("Senha administrativa incorreta.");
       return;
@@ -37,35 +38,78 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     setIsLoading(true);
 
+    // Lógica de Registro
     if (isRegistering && !isConfirmingEmail) {
       setTimeout(() => {
+        const allUsers = persistenceService.getAllUsers();
+        const existing = allUsers.find(u => u.email.toLowerCase() === formData.email.toLowerCase());
+        
+        if (existing) {
+          setError("Este e-mail já está cadastrado no Tribunal.");
+          setIsLoading(false);
+          return;
+        }
+
+        // SALVAMENTO REAL NO BANCO DE DADOS DURANTE O CADASTRO
+        const newUser: UserType = {
+          id: `user-${Math.random().toString(36).substr(2, 9)}`,
+          name: formData.name,
+          email: formData.email,
+          role: formData.role,
+          password: formData.password, // Salva a senha para logins futuros
+          status: 'active',
+          plan: formData.role === UserRole.INSTRUCTOR ? 'PREMIUM' : 'FREE'
+        };
+
+        persistenceService.saveUserGlobally(newUser);
         setIsConfirmingEmail(true);
         setIsLoading(false);
       }, 1500);
       return;
     }
 
+    // Lógica de Login ou Finalização de Cadastro
     setTimeout(() => {
-      // Verifica no banco de dados global se o usuário já existe e está suspenso
       const allUsers = persistenceService.getAllUsers();
-      const existingUser = allUsers.find(u => u.email === formData.email);
+      let targetUser = allUsers.find(u => u.email.toLowerCase() === formData.email.toLowerCase());
 
-      if (existingUser && existingUser.status === 'suspended') {
+      // Se for login e não encontrar usuário
+      if (!isRegistering && !targetUser && !isMasterEmail) {
+        setError("Usuário não encontrado. Crie uma conta para acessar.");
+        setIsLoading(false);
+        return;
+      }
+
+      // Validação de senha para usuários comuns (simples para o MVP)
+      if (!isRegistering && targetUser && targetUser.password && targetUser.password !== formData.password) {
+        setError("Senha incorreta. Verifique seus dados.");
+        setIsLoading(false);
+        return;
+      }
+
+      // Se for o Admin Master e ainda não estiver no banco, cria agora
+      if (isMasterEmail && !targetUser) {
+        targetUser = {
+          id: 'admin-master',
+          name: "Administrador Augusto",
+          email: MASTER_ADMIN_EMAIL,
+          role: UserRole.ADMIN,
+          status: 'active',
+          plan: 'PREMIUM'
+        };
+        persistenceService.saveUserGlobally(targetUser);
+      }
+
+      if (targetUser && targetUser.status === 'suspended') {
         setError("Sua conta foi suspensa pela administração do Tribunal Virtual.");
         setIsLoading(false);
         return;
       }
 
-      const finalUser: UserType = existingUser || {
-        id: isMasterEmail ? 'admin-master' : `user-${Math.random().toString(36).substr(2, 9)}`,
-        name: formData.name || (isMasterEmail ? "Administrador Augusto" : "Usuário JuriSim"),
-        email: formData.email,
-        role: isMasterEmail ? UserRole.ADMIN : formData.role,
-        status: 'active',
-        plan: (isMasterEmail || formData.role === UserRole.INSTRUCTOR) ? 'PREMIUM' : 'FREE'
-      };
+      if (targetUser) {
+        onLogin(targetUser, rememberMe);
+      }
       
-      onLogin(finalUser, rememberMe);
       setIsLoading(false);
     }, 1200);
   };
@@ -79,20 +123,14 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
            </div>
            <h3 className="text-2xl font-serif font-bold text-legal-900 mb-4">Verifique seu e-mail</h3>
            <p className="text-slate-500 text-sm mb-8 leading-relaxed">
-             Enviamos um link de ativação para <strong>{formData.email}</strong>. Por favor, confirme seu cadastro para acessar a plataforma.
+             O cadastro de <strong>{formData.name}</strong> foi realizado com sucesso! Enviamos um link de ativação para <strong>{formData.email}</strong>.
            </p>
            <div className="space-y-3">
               <button 
                 onClick={handleAuth}
                 className="w-full py-4 bg-legal-900 text-white rounded-2xl font-bold shadow-lg hover:bg-legal-800 transition transform active:scale-95 flex items-center justify-center gap-2"
               >
-                Simular Confirmação <CheckCircle size={18}/>
-              </button>
-              <button 
-                onClick={() => setIsConfirmingEmail(false)}
-                className="text-xs text-slate-400 hover:text-legal-900 font-bold uppercase transition"
-              >
-                Reenviar código de acesso
+                Simular Confirmação e Entrar <CheckCircle size={18}/>
               </button>
            </div>
         </div>
@@ -151,7 +189,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           </div>
 
           <form onSubmit={handleAuth} className="space-y-6">
-            {(isRegistering || formData.email === MASTER_ADMIN_EMAIL) && (
+            {isRegistering && (
                <div className="space-y-2 animate-in slide-in-from-top-2">
                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nome Completo</label>
                  <div className="relative">
