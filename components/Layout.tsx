@@ -13,7 +13,8 @@ import {
   HelpCircle,
   Crown,
   PlusCircle,
-  ShieldAlert
+  ShieldAlert,
+  GraduationCap
 } from 'lucide-react';
 import { User, UserRole } from '../types';
 
@@ -52,6 +53,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, currentView, onC
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const isPremium = user.plan === 'PREMIUM' || user.role === UserRole.ADMIN;
   const isAdmin = user.role === UserRole.ADMIN;
+  const isInstructor = user.role === UserRole.INSTRUCTOR || isAdmin;
 
   const handleNavClick = (view: string) => {
     onChangeView(view);
@@ -75,11 +77,18 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, currentView, onC
         <nav className="flex-1 p-5 space-y-2 overflow-y-auto custom-scrollbar">
           <div className="px-4 py-2 text-[10px] font-black text-legal-500 uppercase tracking-widest">Navegação Principal</div>
           <NavItem icon={LayoutDashboard} label="Dashboard" sublabel="Resumo e Performance" active={currentView === 'dashboard'} onClick={() => handleNavClick('dashboard')} />
-          <NavItem icon={BookOpen} label="Cenários" sublabel="Acervo Processual" active={currentView === 'scenarios'} onClick={() => handleNavClick('scenarios')} />
+          <NavItem icon={BookOpen} label="Biblioteca" sublabel="Acervo Processual" active={currentView === 'scenarios'} onClick={() => handleNavClick('scenarios')} />
           
           <div className="px-4 py-2 mt-6 text-[10px] font-black text-legal-500 uppercase tracking-widest">Prática Jurídica</div>
           <NavItem icon={PlayCircle} label="Simulação IA" sublabel="Treinamento Solo" active={currentView === 'simulation'} onClick={() => handleNavClick('simulation')} />
           <NavItem icon={Video} label="Audiência Live" sublabel="Tribunal Virtual" active={currentView === 'multiplayer'} onClick={() => handleNavClick('multiplayer')} />
+
+          {isInstructor && (
+            <>
+               <div className="px-4 py-2 mt-6 text-[10px] font-black text-purple-400 uppercase tracking-widest">Espaço Acadêmico</div>
+               <NavItem icon={GraduationCap} label="Painel Instrutor" sublabel="Gestão de Turmas" active={currentView === 'instructor_panel'} onClick={() => handleNavClick('instructor_panel')} />
+            </>
+          )}
 
           {isAdmin && (
              <>
@@ -125,9 +134,10 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, currentView, onC
       {isMobileMenuOpen && (
         <div className="md:hidden fixed inset-0 z-[55] bg-legal-900 pt-24 px-6 space-y-3 animate-in slide-in-from-top-10 flex flex-col pb-10">
           <NavItem icon={LayoutDashboard} label="Dashboard" active={currentView === 'dashboard'} onClick={() => handleNavClick('dashboard')} />
-          <NavItem icon={BookOpen} label="Cenários" active={currentView === 'scenarios'} onClick={() => handleNavClick('scenarios')} />
+          <NavItem icon={BookOpen} label="Biblioteca" active={currentView === 'scenarios'} onClick={() => handleNavClick('scenarios')} />
           <NavItem icon={PlayCircle} label="Simulação IA" active={currentView === 'simulation'} onClick={() => handleNavClick('simulation')} />
           <NavItem icon={Video} label="Audiência Live" active={currentView === 'multiplayer'} onClick={() => handleNavClick('multiplayer')} />
+          {isInstructor && <NavItem icon={GraduationCap} label="Painel Instrutor" active={currentView === 'instructor_panel'} onClick={() => handleNavClick('instructor_panel')} />}
           {isAdmin && <NavItem icon={ShieldAlert} label="Painel Admin" active={currentView === 'admin_panel'} onClick={() => handleNavClick('admin_panel')} />}
           <NavItem icon={Settings} label="Ajustes" active={currentView === 'settings'} onClick={() => handleNavClick('settings')} />
           <div className="flex-1"></div>

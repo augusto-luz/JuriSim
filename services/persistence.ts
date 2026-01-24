@@ -1,20 +1,21 @@
 
-import { ChatMessage, User, Scenario, StudentReport, CourtRole, UserPerformance, SocialMessage } from '../types';
+import { ChatMessage, User, Scenario, StudentReport, CourtRole, UserPerformance, SocialMessage, ClassRoom } from '../types';
 import { SCENARIOS } from '../constants';
 
-const DB_VERSION = '1.6';
+const DB_VERSION = '1.7';
 const KEYS = {
   VERSION: 'jurisim_db_v',
   USER: 'jurisim_user',
   ALL_USERS: 'jurisim_all_users_list',
   CHAT_HISTORY: 'jurisim_chat_',
   SCENARIO_PROGRESS: 'jurisim_progress_',
-  CUSTOM_SCENARIOS: 'jurisim_custom_scenarios_',
-  REPORTS: 'jurisim_reports_',
+  CUSTOM_SCENARIOS: 'jurisim_custom_scenarios_global',
+  REPORTS: 'jurisim_reports_all',
   ROOM_HISTORY: 'jurisim_room_history_',
   PERFORMANCE: 'jurisim_performance_',
   SOCIAL_MESSAGES: 'jurisim_social_msg_',
-  FRIENDS: 'jurisim_friends_'
+  FRIENDS: 'jurisim_friends_',
+  CLASSES: 'jurisim_classes_all'
 };
 
 export interface RoomHistoryEntry {
@@ -47,21 +48,18 @@ export const persistenceService = {
     } catch (e) { return null; }
   },
 
-  // Gerenciamento Global de Usuários (Banco de Dados do Admin)
   getAllUsers: (): User[] => {
     return persistenceService._safeGet(KEYS.ALL_USERS) || [];
   },
 
   saveUserGlobally: (user: User) => {
     const users = persistenceService.getAllUsers();
-    // Busca sincronizada por ID ou E-mail (Case-Insensitive)
     const index = users.findIndex(u => 
       u.id === user.id || 
       u.email.toLowerCase() === user.email.toLowerCase()
     );
 
     if (index !== -1) {
-      // Atualiza usuário existente preservando campos não enviados
       users[index] = { ...users[index], ...user };
     } else {
       users.push(user);
@@ -69,27 +67,82 @@ export const persistenceService = {
     persistenceService._safeSave(KEYS.ALL_USERS, users);
   },
 
-  deleteUser: (userId: string) => {
-    // Segurança: Não permite deletar o Admin Master via persistência
-    if (userId === 'admin-master') return;
+  // --- Gestão de Turmas ---
+  getClasses: (instructorId: string): ClassRoom[] => {
+    const all = persistenceService._safeGet(KEYS.CLASSES) || [];
+    if (!Array.isArray(all)) return [];
+    return all.filter((c: ClassRoom) => c.instructorId === instructorId);
+  },
 
+  saveClass: (classObj: ClassRoom) => {
+    const all = persistenceService._safeGet(KEYS.CLASSES) || [];
+    const dataArray = Array.isArray(all) ? all : [];
+    const index = dataArray.findIndex((c: ClassRoom) => c.id === classObj.id);
+    if (index !== -1) dataArray[index] = classObj;
+    else dataArray.push(classObj);
+    persistenceService._safeSave(KEYS.CLASSES, dataArray);
+  },
+
+  deleteClass: (classId: string) => {
+    const all = persistenceService._safeGet(KEYS.CLASSES) || [];
+    if (!Array.isArray(all)) return;
+    const filtered = all.filter((c: ClassRoom) => c.id !== classId);
+    persistenceService._safeSave(KEYS.CLASSES, filtered);
+  },
+
+  // --- Gestão de Casos Customizados ---
+  getCustomScenarios: (userId?: string): Scenario[] => {
+    const all = persistenceService._safeGet(KEYS.CUSTOM_SCENARIOS) || [];
+    if (!Array.isArray(all)) return [];
+    if (userId) return all.filter((s: Scenario) => s.createdBy === userId);
+    return all;
+  },
+
+  saveCustomScenario: (scenario: Scenario) => {
+    const all = persistenceService._safeGet(KEYS.CUSTOM_SCENARIOS) || [];
+    const dataArray = Array.isArray(all) ? all : [];
+    const index = dataArray.findIndex((s: Scenario) => s.id === scenario.id);
+    if (index !== -1) dataArray[index] = scenario;
+    else dataArray.push(scenario);
+    persistenceService._safeSave(KEYS.CUSTOM_SCENARIOS, dataArray);
+  },
+
+  deleteCustomScenario: (scenarioId: string) => {
+    const all = persistenceService._safeGet(KEYS.CUSTOM_SCENARIOS) || [];
+    if (!Array.isArray(all)) return;
+    const filtered = all.filter((s: Scenario) => s.id !== scenarioId);
+    persistenceService._safeSave(KEYS.CUSTOM_SCENARIOS, filtered);
+    
+    // Limpeza de histórico e progresso vinculado ao caso excluído
+    const users = persistenceService.getAllUsers();
+    users.forEach(u => {
+      localStorage.removeItem(`${KEYS.CHAT_HISTORY}${u.id}_${scenarioId}`);
+      localStorage.removeItem(`${KEYS.SCENARIO_PROGRESS}${u.id}_${scenarioId}`);
+    });
+  },
+
+  // --- Relatórios e Desempenho ---
+  getAllReports: (): StudentReport[] => {
+    return persistenceService._safeGet(KEYS.REPORTS) || [];
+  },
+
+  getReportsByStudent: (studentId: string): StudentReport[] => {
+    const all = persistenceService.getAllReports();
+    return all.filter(r => r.studentId === studentId);
+  },
+
+  saveStudentReport: (report: StudentReport) => {
+    const reports = persistenceService.getAllReports();
+    persistenceService._safeSave(KEYS.REPORTS, [...reports, report]);
+    persistenceService.updatePerformanceStats(report.studentId, report);
+  },
+
+  deleteUser: (userId: string) => {
+    if (userId === 'admin-master') return;
     const users = persistenceService.getAllUsers().filter(u => u.id !== userId);
     persistenceService._safeSave(KEYS.ALL_USERS, users);
-    
-    // Limpeza profunda de dados vinculados
     localStorage.removeItem(`${KEYS.PERFORMANCE}${userId}`);
     localStorage.removeItem(`${KEYS.FRIENDS}${userId}`);
-    localStorage.removeItem(`${KEYS.ROOM_HISTORY}${userId}`);
-    
-    // Limpa também progresso de cenários para este usuário
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && (key.startsWith(KEYS.SCENARIO_PROGRESS) || key.startsWith(KEYS.CHAT_HISTORY))) {
-        if (key.includes(userId)) {
-          localStorage.removeItem(key);
-        }
-      }
-    }
   },
 
   saveSession: (user: User, remember: boolean) => {
@@ -104,21 +157,14 @@ export const persistenceService = {
     try {
       const sessionUser = JSON.parse(userStored);
       const allUsers = persistenceService.getAllUsers();
-      // Retorna a versão mais atualizada do banco
       const dbUser = allUsers.find(u => u.id === sessionUser.id);
       return dbUser || null;
-    } catch (e) {
-      return null;
-    }
+    } catch (e) { return null; }
   },
 
   clearSession: () => {
     localStorage.removeItem(KEYS.USER);
     sessionStorage.removeItem(KEYS.USER);
-  },
-
-  getCustomScenarios: (userId: string): Scenario[] => {
-    return persistenceService._safeGet(`${KEYS.CUSTOM_SCENARIOS}${userId}`) || [];
   },
 
   saveScenarioProgress: (userId: string, scenarioId: string, progress: number) => {
@@ -135,12 +181,6 @@ export const persistenceService = {
 
   getChatHistory: (userId: string, scenarioId: string): ChatMessage[] | null => {
     return persistenceService._safeGet(`${KEYS.CHAT_HISTORY}${userId}_${scenarioId}`);
-  },
-
-  saveStudentReport: (report: StudentReport) => {
-    const reports = persistenceService._safeGet(KEYS.REPORTS) || [];
-    persistenceService._safeSave(KEYS.REPORTS, [...reports, report]);
-    persistenceService.updatePerformanceStats(report.studentId, report);
   },
 
   updatePerformanceStats: (userId: string, report: StudentReport) => {
@@ -165,13 +205,11 @@ export const persistenceService = {
 
   getGlobalRankings: (currentUser?: User): UserPerformance[] => {
     const rankings: UserPerformance[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith(KEYS.PERFORMANCE)) {
-        const item = persistenceService._safeGet(key);
-        if (item) rankings.push(item);
-      }
-    }
+    const users = persistenceService.getAllUsers();
+    users.forEach(u => {
+        const p = persistenceService._safeGet(`${KEYS.PERFORMANCE}${u.id}`);
+        if(p) rankings.push(p);
+    });
     return rankings.sort((a, b) => (b.avgOratory + b.avgProcedural + b.avgEvidence) - (a.avgOratory + a.avgProcedural + a.avgEvidence));
   },
 
@@ -204,7 +242,7 @@ export const persistenceService = {
   },
 
   getScenarioById: (userId: string, scenarioId: string): Scenario | null => {
-    const all = [...SCENARIOS, ...persistenceService.getCustomScenarios(userId)];
+    const all = [...SCENARIOS, ...persistenceService.getCustomScenarios()];
     return all.find(s => s.id === scenarioId) || null;
   },
 
@@ -224,8 +262,6 @@ export const persistenceService = {
     return entry ? entry.role : null;
   },
 
-  trackScenarioStart: (id: string) => {},
-  
   resetAll: () => {
     localStorage.clear();
     sessionStorage.clear();

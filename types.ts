@@ -41,6 +41,15 @@ export interface User {
   organizationId?: string;
   performance?: UserPerformance;
   friends?: string[];
+  instructorApproved?: boolean; // Permissão solicitada ao Admin
+}
+
+export interface Attachment {
+  id: string;
+  name: string;
+  size: string;
+  type: string;
+  url: string;
 }
 
 export interface Scenario {
@@ -55,6 +64,16 @@ export interface Scenario {
   witnesses: string[];
   objectives: string[];
   isCompleted?: boolean;
+  createdBy?: string;
+  attachments?: Attachment[];
+}
+
+export interface ClassRoom {
+  id: string;
+  name: string;
+  instructorId: string;
+  studentIds: string[];
+  createdAt: number;
 }
 
 export interface ChatMessage {

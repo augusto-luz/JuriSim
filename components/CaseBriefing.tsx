@@ -1,6 +1,7 @@
+
 import React from 'react';
 import { Scenario } from '../types';
-import { FileText, ArrowRight, ArrowLeft, Shield, AlertCircle, Users, Target, BookOpen } from 'lucide-react';
+import { FileText, ArrowRight, ArrowLeft, Shield, AlertCircle, Users, Target, BookOpen, Download } from 'lucide-react';
 
 interface CaseBriefingProps {
   scenario: Scenario;
@@ -36,13 +37,8 @@ export const CaseBriefing: React.FC<CaseBriefingProps> = ({ scenario, onStart, o
         </div>
       </div>
 
-      {/* Conteúdo dos Autos */}
       <div className="flex-1 max-w-5xl mx-auto w-full p-6 grid grid-cols-1 md:grid-cols-3 gap-8">
-         
-         {/* Coluna Principal: Fatos e Provas */}
          <div className="md:col-span-2 space-y-6 animate-in slide-in-from-left-4 duration-500">
-            
-            {/* Cartão de Fatos */}
             <div className="bg-white p-8 rounded-xl shadow-sm border border-legal-200 relative overflow-hidden">
                <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
                <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
@@ -53,37 +49,56 @@ export const CaseBriefing: React.FC<CaseBriefingProps> = ({ scenario, onStart, o
                </p>
             </div>
 
-            {/* Cartão de Provas */}
             <div className="bg-white p-8 rounded-xl shadow-sm border border-legal-200 relative overflow-hidden">
                <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
                <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-                  <FileText className="text-amber-500"/> Provas Anexadas
+                  <FileText className="text-amber-500"/> Acervo Probatório
                </h2>
-               {scenario.evidence && scenario.evidence.length > 0 ? (
-                  <ul className="space-y-3">
-                     {scenario.evidence.map((item, idx) => (
-                        <li key={idx} className="flex items-start gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
-                           <div className="bg-white p-1 rounded border border-slate-200 shrink-0">
-                              <span className="text-xs font-bold text-slate-400">DOC.{idx+1}</span>
-                           </div>
-                           <span className="text-gray-700 text-sm">{item}</span>
-                        </li>
-                     ))}
-                  </ul>
-               ) : (
-                  <p className="text-gray-400 italic">Nenhuma prova documental cadastrada.</p>
-               )}
-            </div>
+               <div className="space-y-4">
+                  {scenario.attachments && scenario.attachments.length > 0 && (
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+                        {scenario.attachments.map(att => (
+                           <a 
+                             key={att.id} 
+                             href={att.url} 
+                             download={att.name}
+                             className="flex items-center justify-between p-3 bg-legal-50 rounded-xl border border-legal-100 group hover:border-accent-gold transition"
+                           >
+                              <div className="flex items-center gap-3">
+                                 <FileText size={18} className="text-legal-600"/>
+                                 <div className="overflow-hidden">
+                                    <p className="text-xs font-bold text-legal-900 truncate">{att.name}</p>
+                                    <p className="text-[10px] text-slate-400 uppercase font-black">{att.size}</p>
+                                 </div>
+                              </div>
+                              <Download size={14} className="text-slate-300 group-hover:text-accent-gold"/>
+                           </a>
+                        ))}
+                     </div>
+                  )}
 
+                  {scenario.evidence && scenario.evidence.length > 0 ? (
+                     <ul className="space-y-3">
+                        {scenario.evidence.map((item, idx) => (
+                           <li key={idx} className="flex items-start gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                              <div className="bg-white p-1 rounded border border-slate-200 shrink-0">
+                                 <span className="text-xs font-bold text-slate-400">DOC.{idx+1}</span>
+                              </div>
+                              <span className="text-gray-700 text-sm">{item}</span>
+                           </li>
+                        ))}
+                     </ul>
+                  ) : (
+                     <p className="text-gray-400 italic">Nenhuma prova documental adicional cadastrada.</p>
+                  )}
+               </div>
+            </div>
          </div>
 
-         {/* Coluna Lateral: Estratégia e Partes */}
          <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
-            
-            {/* Objetivos */}
             <div className="bg-legal-50 p-6 rounded-xl border border-legal-100">
                <h3 className="font-bold text-legal-800 mb-3 flex items-center gap-2">
-                  <Target size={18}/> Objetivos da Defesa
+                  <Target size={18}/> Estratégia Recomendada
                </h3>
                <ul className="space-y-2">
                   {scenario.objectives ? scenario.objectives.map((obj, i) => (
@@ -97,7 +112,6 @@ export const CaseBriefing: React.FC<CaseBriefingProps> = ({ scenario, onStart, o
                </ul>
             </div>
 
-            {/* Testemunhas */}
             <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
                <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
                   <Users size={18}/> Rol de Testemunhas
@@ -119,10 +133,9 @@ export const CaseBriefing: React.FC<CaseBriefingProps> = ({ scenario, onStart, o
             <div className="bg-amber-50 p-4 rounded-lg border border-amber-200 text-amber-800 text-xs flex gap-2">
                <AlertCircle size={32} className="shrink-0"/>
                <p>
-                  <strong>Dica do Instrutor:</strong> Revise bem as datas e contradições nos depoimentos. O Juiz IA pode questionar detalhes específicos dos fatos.
+                  <strong>Dica Jurídica:</strong> A IA do magistrado avalia a precisão dos seus argumentos baseada nas provas documentais anexadas. Utilize o download dos autos para preparar sua sustentação.
                </p>
             </div>
-
          </div>
       </div>
     </div>
