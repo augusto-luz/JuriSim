@@ -25,7 +25,7 @@ class RoomSignalingService {
   private localStream: MediaStream | null = null;
   private localParticipantInfo: Participant | null = null;
   private retryCount: number = 0;
-  private maxRetries: number = 5;
+  private maxRetries: number = 8; // Aumentado para maior tolerância
 
   getPeerId() { return this.peer?.id || ''; }
 
@@ -39,14 +39,15 @@ class RoomSignalingService {
     this.localStream = stream;
     this.localParticipantInfo = user;
 
-    const cleanRoomId = roomId.replace(/[^a-zA-Z0-9-]/g, '');
+    // Normalização agressiva para garantir que host e guest usem o mesmo ID
+    const cleanRoomId = roomId.replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
     const myPeerId = isHost ? `juri-v3-${cleanRoomId}` : undefined;
     
     const isSecure = window.location.protocol === 'https:';
 
     this.peer = new Peer(myPeerId, {
       debug: 1,
-      secure: isSecure,
+      secure: true, // Forçar seguro para deploy
       host: '0.peerjs.com',
       port: 443,
       config: {
@@ -59,7 +60,7 @@ class RoomSignalingService {
 
     this.peer.on('open', (id) => {
       console.debug(`[Signaling] Conectado. ID: ${id}`);
-      this.retryCount = 0; // Reset ao abrir
+      this.retryCount = 0;
       if (!isHost) {
         this.attemptConnectToHost(`juri-v3-${cleanRoomId}`, user);
       } else if (this.localParticipantInfo) {
@@ -73,25 +74,28 @@ class RoomSignalingService {
     this.peer.on('error', (err: any) => {
       console.error("[Signaling] Erro:", err.type);
       
-      // Lógica de Re-tentativa para Host Indisponível (comum se o host for lento ou estiver escolhendo cargo)
+      // Se o host não foi encontrado, tenta novamente (pode ser delay de propagação do PeerJS)
       if (err.type === 'peer-unavailable' && !this.isHost && this.retryCount < this.maxRetries) {
         this.retryCount++;
-        this.notifyListeners({ type: 'RETRYING', payload: `Aguardando o host se conectar... (Tentativa ${this.retryCount}/${this.maxRetries})` });
+        this.notifyListeners({ 
+          type: 'RETRYING', 
+          payload: `O Tribunal está processando a entrada... (Tentativa ${this.retryCount}/${this.maxRetries})` 
+        });
         
         setTimeout(() => {
           if (this.peer && !this.peer.destroyed) {
             this.attemptConnectToHost(`juri-v3-${cleanRoomId}`, this.localParticipantInfo!);
           }
-        }, 3000); // 3 segundos entre tentativas
+        }, 4000); // 4 segundos para dar tempo ao host
         return;
       }
 
       if (err.type === 'peer-unavailable') {
-        this.notifyListeners({ type: 'ERROR', payload: 'O anfitrião da sala não foi encontrado. Verifique se o código está correto.' });
+        this.notifyListeners({ type: 'ERROR', payload: 'A audiência não foi encontrada ou o anfitrião desconectou. Verifique o código.' });
       } else if (err.type === 'unavailable-id') {
-        this.notifyListeners({ type: 'ERROR', payload: 'Esta sala já possui um anfitrião ativo.' });
+        this.notifyListeners({ type: 'ERROR', payload: 'Esta sala já possui um magistrado ativo ou o código está em uso.' });
       } else {
-        this.notifyListeners({ type: 'ERROR', payload: `Falha de rede: ${err.type}` });
+        this.notifyListeners({ type: 'ERROR', payload: `Erro de comunicação: ${err.type}` });
       }
     });
   }
@@ -99,11 +103,11 @@ class RoomSignalingService {
   private attemptConnectToHost(hostId: string, user: Participant) {
     if (!this.peer || this.peer.destroyed) return;
 
-    console.debug(`[Signaling] Tentando conectar ao host: ${hostId}`);
+    console.debug(`[Signaling] Tentando Handshake com host: ${hostId}`);
     const conn = this.peer.connect(hostId, { metadata: user, reliable: true });
 
     conn.on('open', () => {
-      console.debug("[Signaling] Conexão com host estabelecida.");
+      console.debug("[Signaling] Handshake bem sucedido.");
       this.retryCount = 0;
       this.connections.set(hostId, conn);
       conn.send({ type: 'JOIN', payload: { ...user, id: this.peer!.id } });
@@ -111,7 +115,7 @@ class RoomSignalingService {
 
     conn.on('data', (data: any) => this.handleMessage(data));
     conn.on('close', () => this.handleParticipantLeave(hostId));
-    conn.on('error', (err) => console.error("[Signaling] Erro na conexão de dados:", err));
+    conn.on('error', (err) => console.error("[Signaling] Erro DataConn:", err));
   }
 
   private handleDataConnection(conn: DataConnection) {
@@ -189,7 +193,7 @@ class RoomSignalingService {
     if (this.isHost) {
       this.connections.forEach(conn => conn.open && conn.send(event));
     } else {
-      const cleanRoomId = this.roomId.replace(/[^a-zA-Z0-9-]/g, '');
+      const cleanRoomId = this.roomId.replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
       const hostId = `juri-v3-${cleanRoomId}`;
       const hostConn = this.connections.get(hostId);
       if (hostConn?.open) hostConn.send(event);

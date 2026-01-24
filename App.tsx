@@ -30,16 +30,19 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const roomParam = params.get('room');
+    const roomParam = params.get('room')?.trim();
     const restoredUser = persistenceService.restoreSession();
+    
     if (restoredUser) {
       setUser(restoredUser);
       setIsAuthenticated(true);
     }
+    
     if (roomParam) {
-        setJoinCodeInput(roomParam);
-        setActiveRoomId(roomParam);
-        const previousRole = restoredUser ? persistenceService.getRoleForRoom(restoredUser.id, roomParam) : null;
+        const normalizedRoom = roomParam.toLowerCase();
+        setJoinCodeInput(normalizedRoom);
+        setActiveRoomId(normalizedRoom);
+        const previousRole = restoredUser ? persistenceService.getRoleForRoom(restoredUser.id, normalizedRoom) : null;
         if (previousRole) {
           setMultiplayerRole(previousRole);
           setIsHost(false);
@@ -72,7 +75,6 @@ const App: React.FC = () => {
   };
 
   const navigateToSimulation = () => {
-     // Achar o último cenário com progresso
      const all = [...SCENARIOS, ...persistenceService.getCustomScenarios(user.id)];
      const withProgress = all
        .map(s => ({ ...s, progress: persistenceService.getScenarioProgress(user.id, s.id) }))
@@ -83,20 +85,15 @@ const App: React.FC = () => {
         setActiveScenarioId(withProgress[0].id);
         setCurrentView('simulation_active');
      } else {
-        // Se não houver progresso, vai para o hub de seleção
         setCurrentView('simulation_hub');
      }
   };
 
-  /**
-   * Helper to handle entering a multiplayer room with a role.
-   */
   const handleSelectRole = (role: CourtRole) => {
     setMultiplayerRole(role);
     setShowRoleSelection(false);
     setCurrentView('multiplayer_active');
     
-    // Save to user's room history
     persistenceService.saveRoomHistory(user.id, {
       roomId: activeRoomId,
       role: role,
@@ -136,7 +133,7 @@ const App: React.FC = () => {
     }
 
     if (currentView === 'multiplayer_active' && multiplayerRole) {
-      return <MultiplayerRoom onExit={() => setCurrentView('multiplayer')} currentUserRole={multiplayerRole} roomId={activeRoomId} user={user} isHost={isHost} />;
+      return <MultiplayerRoom onExit={() => { setCurrentView('multiplayer'); setMultiplayerRole(null); }} currentUserRole={multiplayerRole} roomId={activeRoomId} user={user} isHost={isHost} />;
     }
 
     switch (currentView) {
@@ -145,24 +142,29 @@ const App: React.FC = () => {
       case 'scenarios':
         return <ScenariosView onStartScenario={startScenario} user={user} onUpgrade={() => setCurrentView('pricing')} />;
       case 'simulation':
-        // Menu 'Simulação IA' redireciona inteligentemente
         navigateToSimulation();
         return null;
       case 'multiplayer':
         return (
           <MultiplayerLobby 
-            onStartNewMeeting={() => { setActiveRoomId('room-'+Date.now()); setIsHost(true); setShowRoleSelection(true); }} 
+            onStartNewMeeting={() => { 
+              const newId = 'room-'+Date.now();
+              setActiveRoomId(newId); 
+              setIsHost(true); 
+              setShowRoleSelection(true); 
+            }} 
             onJoinMeeting={(role) => {
               if (role) {
                 handleSelectRole(role);
               } else if (joinCodeInput) {
-                setActiveRoomId(joinCodeInput);
+                const normalizedCode = joinCodeInput.trim().toLowerCase();
+                setActiveRoomId(normalizedCode);
                 setIsHost(false); 
                 setShowRoleSelection(true);
               }
             }} 
             joinCode={joinCodeInput} 
-            setJoinCode={setJoinCodeInput} 
+            setJoinCode={(code) => setJoinCodeInput(code.trim().toLowerCase())} 
             user={user} 
           />
         );
@@ -186,7 +188,6 @@ const App: React.FC = () => {
         </Layout>
       )}
 
-      {/* ROLE SELECTION MODAL */}
       {showRoleSelection && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-legal-900/80 backdrop-blur-md animate-in fade-in">
            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-200">
