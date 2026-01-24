@@ -18,7 +18,8 @@ export const AdminPanel: React.FC = () => {
   }, []);
 
   const loadUsers = () => {
-    setUsers(persistenceService.getAllUsers());
+    const data = persistenceService.getAllUsers();
+    setUsers([...data]); // Garante nova referência para trigger de render
   };
 
   const notify = (msg: string, type: 'success' | 'error' = 'success') => {
@@ -35,10 +36,15 @@ export const AdminPanel: React.FC = () => {
   };
 
   const handleDelete = (userId: string) => {
-    if (confirm("TEM CERTEZA? Esta ação é irreversível e apagará todos os dados, performances e histórico deste usuário.")) {
+    if (userId === 'admin-master') {
+      notify("Não é possível excluir a conta mestre do sistema.", 'error');
+      return;
+    }
+
+    if (confirm("ATENÇÃO: A exclusão é irreversível. Todos os dados, histórico de audiências e performance deste usuário serão apagados permanentemente do banco de dados. Deseja prosseguir?")) {
       persistenceService.deleteUser(userId);
-      loadUsers();
-      notify("Conta excluída permanentemente.", 'error');
+      loadUsers(); // Recarrega a lista do localStorage
+      notify("Registro removido do banco de dados com sucesso.", 'error');
     }
   };
 
@@ -52,7 +58,7 @@ export const AdminPanel: React.FC = () => {
       persistenceService.saveUserGlobally(editingUser);
       setEditingUser(null);
       loadUsers();
-      notify("Alterações salvas no banco de dados.");
+      notify("Dados do usuário atualizados no sistema.");
     }
   };
 
@@ -163,6 +169,11 @@ export const AdminPanel: React.FC = () => {
               ))}
             </tbody>
           </table>
+          {filteredUsers.length === 0 && (
+            <div className="p-20 text-center text-slate-400 italic">
+              Nenhum usuário encontrado com os termos de pesquisa informados.
+            </div>
+          )}
         </div>
       </div>
 

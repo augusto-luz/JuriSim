@@ -2,7 +2,7 @@
 import { ChatMessage, User, Scenario, StudentReport, CourtRole, UserPerformance, SocialMessage } from '../types';
 import { SCENARIOS } from '../constants';
 
-const DB_VERSION = '1.5';
+const DB_VERSION = '1.6';
 const KEYS = {
   VERSION: 'jurisim_db_v',
   USER: 'jurisim_user',
@@ -47,15 +47,21 @@ export const persistenceService = {
     } catch (e) { return null; }
   },
 
-  // Gerenciamento Global de Usuários (Bando de Dados do Admin)
+  // Gerenciamento Global de Usuários (Banco de Dados do Admin)
   getAllUsers: (): User[] => {
     return persistenceService._safeGet(KEYS.ALL_USERS) || [];
   },
 
   saveUserGlobally: (user: User) => {
     const users = persistenceService.getAllUsers();
-    const index = users.findIndex(u => u.id === user.id || u.email === user.email);
+    // Busca sincronizada por ID ou E-mail (Case-Insensitive)
+    const index = users.findIndex(u => 
+      u.id === user.id || 
+      u.email.toLowerCase() === user.email.toLowerCase()
+    );
+
     if (index !== -1) {
+      // Atualiza usuário existente preservando campos não enviados
       users[index] = { ...users[index], ...user };
     } else {
       users.push(user);
@@ -64,10 +70,26 @@ export const persistenceService = {
   },
 
   deleteUser: (userId: string) => {
+    // Segurança: Não permite deletar o Admin Master via persistência
+    if (userId === 'admin-master') return;
+
     const users = persistenceService.getAllUsers().filter(u => u.id !== userId);
     persistenceService._safeSave(KEYS.ALL_USERS, users);
+    
+    // Limpeza profunda de dados vinculados
     localStorage.removeItem(`${KEYS.PERFORMANCE}${userId}`);
     localStorage.removeItem(`${KEYS.FRIENDS}${userId}`);
+    localStorage.removeItem(`${KEYS.ROOM_HISTORY}${userId}`);
+    
+    // Limpa também progresso de cenários para este usuário
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith(KEYS.SCENARIO_PROGRESS) || key.startsWith(KEYS.CHAT_HISTORY))) {
+        if (key.includes(userId)) {
+          localStorage.removeItem(key);
+        }
+      }
+    }
   },
 
   saveSession: (user: User, remember: boolean) => {
@@ -79,11 +101,15 @@ export const persistenceService = {
   restoreSession: (): User | null => {
     const userStored = sessionStorage.getItem(KEYS.USER) || localStorage.getItem(KEYS.USER);
     if (!userStored) return null;
-    const sessionUser = JSON.parse(userStored);
-    // Verifica se o usuário ainda existe e não está suspenso
-    const allUsers = persistenceService.getAllUsers();
-    const dbUser = allUsers.find(u => u.id === sessionUser.id);
-    return dbUser || null;
+    try {
+      const sessionUser = JSON.parse(userStored);
+      const allUsers = persistenceService.getAllUsers();
+      // Retorna a versão mais atualizada do banco
+      const dbUser = allUsers.find(u => u.id === sessionUser.id);
+      return dbUser || null;
+    } catch (e) {
+      return null;
+    }
   },
 
   clearSession: () => {

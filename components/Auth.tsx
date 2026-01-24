@@ -28,7 +28,8 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     e.preventDefault();
     setError(null);
 
-    const isMasterEmail = formData.email.toLowerCase() === MASTER_ADMIN_EMAIL;
+    const emailLow = formData.email.toLowerCase();
+    const isMasterEmail = emailLow === MASTER_ADMIN_EMAIL.toLowerCase();
     
     if (isMasterEmail && formData.password !== MASTER_ADMIN_PASS) {
       setError("Senha administrativa incorreta.");
@@ -40,11 +41,13 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     if (isRegistering && !isConfirmingEmail) {
       setTimeout(() => {
         const allUsers = persistenceService.getAllUsers();
-        const existing = allUsers.find(u => u.email.toLowerCase() === formData.email.toLowerCase());
+        // Sincronização de e-mail: busca rigorosa antes do cadastro
+        const existing = allUsers.find(u => u.email.toLowerCase() === emailLow);
         
         if (existing) {
-          setError("Este e-mail já está cadastrado no Tribunal.");
+          setError("Este e-mail já possui cadastro. Por favor, realize o login.");
           setIsLoading(false);
+          setIsRegistering(false); // Direciona para o login
           return;
         }
 
@@ -67,21 +70,22 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     setTimeout(() => {
       const allUsers = persistenceService.getAllUsers();
-      let targetUser = allUsers.find(u => u.email.toLowerCase() === formData.email.toLowerCase());
+      let targetUser = allUsers.find(u => u.email.toLowerCase() === emailLow);
 
       if (!isRegistering && !targetUser && !isMasterEmail) {
-        setError("Usuário não encontrado. Crie uma conta para acessar.");
+        setError("Usuário não encontrado. Verifique seu e-mail ou crie uma conta.");
         setIsLoading(false);
         return;
       }
 
+      // Validação de senha para usuários comuns
       if (!isRegistering && targetUser && targetUser.password && targetUser.password !== formData.password) {
-        setError("Senha incorreta. Verifique seus dados.");
+        setError("Senha incorreta. Verifique suas credenciais.");
         setIsLoading(false);
         return;
       }
 
-      // Garante que o ID do Master Admin seja sempre 'admin-master'
+      // Garante que o ID do Master Admin seja persistente e único
       if (isMasterEmail && (!targetUser || targetUser.id !== 'admin-master')) {
         targetUser = {
           id: 'admin-master',
@@ -125,7 +129,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 onClick={handleAuth}
                 className="w-full py-4 bg-legal-900 text-white rounded-2xl font-bold shadow-lg hover:bg-legal-800 transition transform active:scale-95 flex items-center justify-center gap-2"
               >
-                Simular Confirmação e Entrar <CheckCircle size={18}/>
+                Acessar Plataforma <CheckCircle size={18}/>
               </button>
            </div>
         </div>
