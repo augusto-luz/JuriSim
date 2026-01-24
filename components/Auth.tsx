@@ -28,6 +28,12 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     e.preventDefault();
     setError(null);
 
+    // Validação de nome obrigatório para reconhecimento
+    if (!formData.name.trim()) {
+      setError("Por favor, informe seu nome completo para identificação no Tribunal.");
+      return;
+    }
+
     const emailLow = formData.email.toLowerCase();
     const isMasterEmail = emailLow === MASTER_ADMIN_EMAIL.toLowerCase();
     
@@ -41,13 +47,12 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     if (isRegistering && !isConfirmingEmail) {
       setTimeout(() => {
         const allUsers = persistenceService.getAllUsers();
-        // Sincronização de e-mail: busca rigorosa antes do cadastro
         const existing = allUsers.find(u => u.email.toLowerCase() === emailLow);
         
         if (existing) {
           setError("Este e-mail já possui cadastro. Por favor, realize o login.");
           setIsLoading(false);
-          setIsRegistering(false); // Direciona para o login
+          setIsRegistering(false);
           return;
         }
 
@@ -78,18 +83,16 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         return;
       }
 
-      // Validação de senha para usuários comuns
       if (!isRegistering && targetUser && targetUser.password && targetUser.password !== formData.password) {
         setError("Senha incorreta. Verifique suas credenciais.");
         setIsLoading(false);
         return;
       }
 
-      // Garante que o ID do Master Admin seja persistente e único
       if (isMasterEmail && (!targetUser || targetUser.id !== 'admin-master')) {
         targetUser = {
           id: 'admin-master',
-          name: "Administrador Augusto",
+          name: formData.name || "Administrador Augusto",
           email: MASTER_ADMIN_EMAIL,
           role: UserRole.ADMIN,
           status: 'active',
@@ -106,7 +109,10 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       }
 
       if (targetUser) {
-        onLogin(targetUser, rememberMe);
+        // Sincroniza o nome atual do formulário para garantir reconhecimento dentro da ferramenta
+        const updatedUser = { ...targetUser, name: formData.name };
+        persistenceService.saveUserGlobally(updatedUser);
+        onLogin(updatedUser, rememberMe);
       }
       
       setIsLoading(false);
@@ -188,22 +194,21 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           </div>
 
           <form onSubmit={handleAuth} className="space-y-6">
-            {isRegistering && (
-               <div className="space-y-2 animate-in slide-in-from-top-2">
-                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nome Completo</label>
-                 <div className="relative">
-                   <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                   <input
-                     type="text"
-                     required={isRegistering}
-                     value={formData.name}
-                     onChange={(e) => setFormData({...formData, name: e.target.value})}
-                     className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-accent-gold outline-none transition"
-                     placeholder="Ex: Dr. Augusto Silva"
-                   />
-                 </div>
-               </div>
-            )}
+            {/* Campo de Nome agora visível em ambos os modos para garantir reconhecimento */}
+            <div className="space-y-2 animate-in slide-in-from-top-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nome Completo</label>
+              <div className="relative">
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                <input
+                  type="text"
+                  required
+                  value={formData.name}
+                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-accent-gold outline-none transition"
+                  placeholder="Ex: Dr. Augusto Silva"
+                />
+              </div>
+            </div>
 
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">E-mail Profissional</label>
