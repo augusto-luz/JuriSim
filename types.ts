@@ -23,20 +23,11 @@ export enum CourtRole {
 export interface UserPerformance {
   userId: string;
   userName: string;
-  totalExerciseTime: number; // em minutos
+  totalExerciseTime: number; 
   avgOratory: number;
   avgProcedural: number;
   avgEvidence: number;
   totalSimulations: number;
-}
-
-export interface ClassChatMessage {
-  id: string;
-  senderId: string;
-  senderName: string;
-  senderRole: UserRole;
-  text: string;
-  timestamp: number;
 }
 
 export interface User {
@@ -47,6 +38,7 @@ export interface User {
   plan?: 'FREE' | 'PREMIUM';
   organizationId?: string;
   performance?: UserPerformance;
+  friends?: string[]; // IDs dos amigos
 }
 
 export interface Scenario {
@@ -60,39 +52,21 @@ export interface Scenario {
   evidence: string[];
   witnesses: string[];
   objectives: string[];
-}
-
-export interface StudentReport {
-  id: string;
-  studentId: string;
-  studentName: string;
-  scenarioId: string;
-  scenarioTitle: string;
-  score: number;
-  feedback: string;
-  technicalAnalysis: {
-    rhetoric: number;
-    procedure: number;
-    evidenceHandling: number;
-  };
-  timestamp: number;
-}
-
-export interface Classroom {
-  id: string;
-  name: string;
-  instructorId: string;
-  area: 'Civil' | 'Penal' | 'Trabalhista' | 'Empresarial' | 'Multi';
-  inviteCode: string;
-  studentIds: string[];
-  assignedScenarioIds: string[];
-  chat?: ClassChatMessage[];
+  isCompleted?: boolean;
 }
 
 export interface ChatMessage {
   id: string;
   role: 'user' | 'model' | 'system';
   senderName: string;
+  text: string;
+  timestamp: number;
+}
+
+export interface SocialMessage {
+  id: string;
+  fromId: string;
+  toId: string;
   text: string;
   timestamp: number;
 }
@@ -108,4 +82,21 @@ export interface Participant {
   audioLevel?: number;
   status: 'waiting' | 'active' | 'disconnected' | 'kicked';
   stream?: MediaStream;
+}
+
+// Fix: Added missing StudentReport interface to resolve import errors in services and components
+export interface StudentReport {
+  id: string;
+  studentId: string;
+  studentName: string;
+  scenarioId: string;
+  scenarioTitle: string;
+  score: number;
+  feedback: string;
+  technicalAnalysis: {
+    rhetoric: number;
+    procedure: number;
+    evidenceHandling: number;
+  };
+  timestamp: number;
 }
