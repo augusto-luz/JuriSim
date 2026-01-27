@@ -14,6 +14,7 @@ const KEYS = {
   ROOM_HISTORY: 'jurisim_room_history_',
   PERFORMANCE: 'jurisim_performance_',
   SOCIAL_MESSAGES: 'jurisim_social_msg_',
+  CLASS_MESSAGES: 'jurisim_class_msg_',
   FRIENDS: 'jurisim_friends_',
   CLASSES: 'jurisim_classes_all'
 };
@@ -233,6 +234,17 @@ export const persistenceService = {
   getSocialMessages: (userId: string, friendId: string): SocialMessage[] => {
     const chatKey = [userId, friendId].sort().join('_');
     return persistenceService._safeGet(`${KEYS.SOCIAL_MESSAGES}${chatKey}`) || [];
+  },
+
+  // --- Chat de Turmas ---
+  saveClassMessage: (classId: string, msg: ChatMessage) => {
+    const key = `${KEYS.CLASS_MESSAGES}${classId}`;
+    const history = persistenceService._safeGet(key) || [];
+    persistenceService._safeSave(key, [...history, msg].slice(-200));
+  },
+
+  getClassMessages: (classId: string): ChatMessage[] => {
+    return persistenceService._safeGet(`${KEYS.CLASS_MESSAGES}${classId}`) || [];
   },
 
   trackExerciseTime: (userId: string, minutes: number) => {
