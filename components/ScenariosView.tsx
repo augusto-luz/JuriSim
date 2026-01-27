@@ -6,7 +6,7 @@ import { Scenario, User, UserRole, UserPerformance, SocialMessage } from '../typ
 import { 
   Search, BookOpen, Play, FileText, PlusCircle, Users,
   Trophy, Send, Scale, UserPlus, MessageCircle, Radar, Activity, Clock, ShieldCheck, CheckCircle, Fingerprint, UserCheck, AlertCircle, Plus, Trash2,
-  TrendingUp, Award, Medal, Target
+  TrendingUp, Award, Medal, Target, ChevronRight
 } from 'lucide-react';
 import { 
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar as RadarArea, ResponsiveContainer, Tooltip,
@@ -116,6 +116,37 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
     }));
   }, [sortedRankings]);
 
+  // Agrupamento por área para a Biblioteca Global
+  // Fix: Explicitly type useMemo to ensure Object.entries infers the correct types later
+  const groupedScenarios = useMemo<Record<string, Scenario[]> | null>(() => {
+    if (activeTab !== 'library') return null;
+    const filtered = scenarios.filter(s => 
+      s.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.area.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    
+    const groups: Record<string, Scenario[]> = {};
+    filtered.forEach(s => {
+      if (!groups[s.area]) groups[s.area] = [];
+      groups[s.area].push(s);
+    });
+    
+    // Ordenação fixa para consistência
+    const order = ['Civil', 'Penal', 'Trabalhista', 'Empresarial'];
+    const sortedGroups: Record<string, Scenario[]> = {};
+    
+    order.forEach(area => {
+      if (groups[area]) sortedGroups[area] = groups[area];
+    });
+    
+    // Adiciona áreas que não estão na ordem fixa (se houver customizadas)
+    Object.keys(groups).forEach(area => {
+      if (!sortedGroups[area]) sortedGroups[area] = groups[area];
+    });
+    
+    return sortedGroups;
+  }, [scenarios, searchTerm, activeTab]);
+
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8 animate-in fade-in pb-24">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
@@ -146,10 +177,30 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20}/>
             <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Pesquisar autos e teses..." className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-accent-gold transition shadow-sm" />
           </div>
-          <div className="grid grid-cols-1 gap-6">
-            {scenarios.filter(s => s.title.toLowerCase().includes(searchTerm.toLowerCase())).map(scenario => (
-              <CaseCard key={scenario.id} scenario={scenario} onStart={onStartScenario} currentUserId={user.id} onDelete={handleDeleteScenario} />
-            ))}
+          
+          <div className="space-y-12">
+            {activeTab === 'library' && groupedScenarios ? (
+              // Fix: Cast Object.entries to correct type to avoid 'unknown' or 'any' inference errors
+              (Object.entries(groupedScenarios) as [string, Scenario[]][]).map(([area, areaScenarios]) => (
+                <div key={area} className="space-y-6">
+                  <div className="flex items-center gap-3 border-b border-slate-200 pb-2">
+                    <h2 className="text-xl font-serif font-bold text-legal-900">{area}</h2>
+                    <span className="bg-slate-100 text-slate-500 text-[10px] font-black px-2 py-0.5 rounded-full uppercase">{areaScenarios.length} Casos</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-6">
+                    {areaScenarios.map(scenario => (
+                      <CaseCard key={scenario.id} scenario={scenario} onStart={onStartScenario} currentUserId={user.id} onDelete={handleDeleteScenario} />
+                    ))}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="grid grid-cols-1 gap-6">
+                {scenarios.filter(s => s.title.toLowerCase().includes(searchTerm.toLowerCase())).map(scenario => (
+                  <CaseCard key={scenario.id} scenario={scenario} onStart={onStartScenario} currentUserId={user.id} onDelete={handleDeleteScenario} />
+                ))}
+              </div>
+            )}
             {scenarios.length === 0 && <p className="text-center py-20 text-slate-400 italic">Nenhum caso disponível nesta categoria.</p>}
           </div>
         </>
