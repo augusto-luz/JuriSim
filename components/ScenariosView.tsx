@@ -109,6 +109,13 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
     });
   }, [allPerformances]);
 
+  const topChartsData = useMemo(() => {
+    return sortedRankings.slice(0, 5).map(r => ({
+      name: r.userName.split(' ')[0],
+      score: Math.round((r.avgOratory + r.avgProcedural + r.avgEvidence) / 3)
+    }));
+  }, [sortedRankings]);
+
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8 animate-in fade-in pb-24">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
@@ -251,17 +258,61 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
                ))}
             </div>
 
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+               <div className="bg-white rounded-[2.5rem] border shadow-sm p-8 flex flex-col h-[400px]">
+                  <h3 className="text-lg font-serif font-bold text-legal-900 mb-2">Top 5 - Pontuação Média</h3>
+                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-6">Métrica acumulada por audiência</p>
+                  <div className="flex-1 w-full">
+                     <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={topChartsData} layout="vertical" margin={{ left: 20 }}>
+                           <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                           <XAxis type="number" domain={[0, 100]} hide />
+                           <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 'bold', fill: '#102a43'}} />
+                           <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}} />
+                           <Bar dataKey="score" radius={[0, 4, 4, 0]}>
+                              {topChartsData.map((entry, index) => (
+                                 <Cell key={`cell-${index}`} fill={index === 0 ? '#c5a065' : '#102a43'} />
+                              ))}
+                           </Bar>
+                        </BarChart>
+                     </ResponsiveContainer>
+                  </div>
+               </div>
+
+               <div className="bg-legal-900 rounded-[2.5rem] p-8 text-white flex flex-col justify-between h-[400px]">
+                  <div>
+                     <h3 className="text-lg font-serif font-bold text-accent-gold mb-2">Ranking Global de Tempo</h3>
+                     <p className="text-[10px] text-legal-400 font-black uppercase tracking-widest mb-8">Dedicada à prática forense</p>
+                     
+                     <div className="space-y-6">
+                        {sortedRankings.slice(0, 4).map((r, i) => (
+                           <div key={r.userId} className="flex items-center justify-between group">
+                              <div className="flex items-center gap-4">
+                                 <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center font-black text-xs text-legal-300">{i+1}</div>
+                                 <p className="text-sm font-bold truncate max-w-[150px]">{r.userName}</p>
+                              </div>
+                              <div className="flex items-center gap-2 text-accent-gold">
+                                 <Clock size={14}/>
+                                 <span className="text-xs font-black">{Math.round(r.totalExerciseTime / 60)}h</span>
+                              </div>
+                           </div>
+                        ))}
+                     </div>
+                  </div>
+                  <div className="pt-8 border-t border-white/10 flex justify-between items-center">
+                     <p className="text-[10px] font-black uppercase text-legal-500">Média da Plataforma</p>
+                     <p className="text-2xl font-serif font-bold text-white">
+                        {allPerformances.length > 0 ? Math.round(allPerformances.reduce((a,b)=>a+b.totalExerciseTime, 0) / allPerformances.length / 60) : 0}h
+                     </p>
+                  </div>
+               </div>
+            </div>
+
             <div className="bg-white rounded-[2.5rem] border shadow-sm overflow-hidden">
                <div className="p-8 border-b bg-slate-50 flex justify-between items-center">
                   <div>
-                     <h3 className="text-xl font-serif font-bold text-legal-900">Leaderboard Global</h3>
-                     <p className="text-xs text-slate-500">Métricas atualizadas baseadas em avaliações de IA.</p>
-                  </div>
-                  <div className="flex gap-4">
-                     <div className="text-right">
-                        <p className="text-[10px] font-black text-slate-400 uppercase">Total Praticantes</p>
-                        <p className="text-lg font-black text-legal-900">{allPerformances.length}</p>
-                     </div>
+                     <h3 className="text-xl font-serif font-bold text-legal-900">Elite Leaderboard</h3>
+                     <p className="text-xs text-slate-500">Métricas oficiais de performance avaliadas por IA.</p>
                   </div>
                </div>
                <div className="overflow-x-auto">
@@ -269,9 +320,9 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
                      <thead>
                         <tr className="bg-white border-b">
                            <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase">Posição</th>
-                           <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase">Advogado / Estudante</th>
-                           <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase">Score Geral</th>
-                           <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase">Destaque</th>
+                           <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase">Profissional</th>
+                           <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase">Score Médio</th>
+                           <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase">Estatísticas</th>
                            <th className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase">Ações</th>
                         </tr>
                      </thead>
@@ -285,7 +336,7 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
                               </td>
                               <td className="px-6 py-4">
                                  <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-[10px] uppercase">{rank.userName.charAt(0)}</div>
+                                    <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-[10px] uppercase shadow-sm">{rank.userName.charAt(0)}</div>
                                     <span className="text-xs font-bold text-legal-900">{rank.userName}</span>
                                  </div>
                               </td>
@@ -298,8 +349,10 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
                                  </div>
                               </td>
                               <td className="px-6 py-4">
-                                 {rank.avgOratory > 80 && <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] font-black uppercase tracking-widest mr-2">Orador</span>}
-                                 {rank.avgProcedural > 80 && <span className="px-2 py-0.5 bg-purple-50 text-purple-600 rounded text-[9px] font-black uppercase tracking-widest">Processualista</span>}
+                                 <div className="flex gap-2">
+                                    <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] font-black uppercase">{rank.totalSimulations} Simulações</span>
+                                    <span className="px-2 py-0.5 bg-green-50 text-green-600 rounded text-[9px] font-black uppercase">{Math.round(rank.totalExerciseTime / 60)}h Prática</span>
+                                 </div>
                               </td>
                               <td className="px-6 py-4 text-right">
                                  <button onClick={() => { setSelectedFriend(rank); setActiveTab('social'); }} className="p-2 text-slate-400 hover:text-legal-900 transition shadow-sm"><Activity size={16}/></button>
@@ -319,7 +372,7 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
 const CaseCard = ({ scenario, onStart, currentUserId, onDelete }: any) => {
   const isCompleted = scenario.progress === 100;
   const isOwner = scenario.createdBy === currentUserId;
-  const isNative = scenario.id === '1' || scenario.id === '2' || scenario.id === '3';
+  const isNative = parseInt(scenario.id) <= 12; // Agora os 12 primeiros são nativos
 
   return (
     <div className={`bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm hover:shadow-lg transition-all flex flex-col md:flex-row group ${isCompleted ? 'border-green-100 bg-green-50/5' : ''}`}>

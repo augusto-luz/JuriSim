@@ -34,7 +34,10 @@ export const InstructorPanel: React.FC<InstructorPanelProps> = ({ user }) => {
   }, [isApproved, user.id]);
 
   const loadData = () => {
-    setClasses([...persistenceService.getClasses(user.id)]);
+    // Busca dados e força nova referência de array para garantir atualização da UI
+    const instructorClasses = persistenceService.getClasses(user.id);
+    setClasses([...instructorClasses]);
+    
     setAllUsers(persistenceService.getAllUsers());
     setReports(persistenceService.getAllReports());
     setCustomScenarios(persistenceService.getCustomScenarios(user.id));
@@ -58,10 +61,19 @@ export const InstructorPanel: React.FC<InstructorPanelProps> = ({ user }) => {
   const handleDeleteClass = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirm("Deseja realmente excluir esta turma? Todos os vínculos de alunos serão removidos permanentemente.")) {
+      // 1. Remove da persistência
       persistenceService.deleteClass(id);
-      if (selectedClass?.id === id) setSelectedClass(null);
-      // Forçar recarregamento do estado para refletir a exclusão
-      setTimeout(() => loadData(), 50);
+      
+      // 2. Limpa seleção se for a turma atual
+      if (selectedClass?.id === id) {
+        setSelectedClass(null);
+      }
+      
+      // 3. Atualiza estado local imediatamente filtrando a lista atual
+      setClasses(prev => prev.filter(c => c.id !== id));
+      
+      // 4. Recarrega dados completos para sincronia
+      setTimeout(() => loadData(), 100);
     }
   };
 
@@ -152,7 +164,7 @@ export const InstructorPanel: React.FC<InstructorPanelProps> = ({ user }) => {
                           <div className="flex items-center gap-2">
                              <button 
                                 onClick={(e) => handleDeleteClass(c.id, e)} 
-                                className="p-2 text-slate-300 hover:text-red-600 opacity-60 group-hover:opacity-100 transition-opacity"
+                                className="p-2 text-slate-300 hover:text-red-600 opacity-80 group-hover:opacity-100 transition-opacity"
                                 title="Excluir Turma"
                              >
                                 <Trash2 size={18}/>
