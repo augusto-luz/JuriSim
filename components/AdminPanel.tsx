@@ -4,7 +4,8 @@ import { persistenceService } from '../services/persistence';
 import { User, UserRole } from '../types';
 import { 
   Users, Search, ShieldAlert, Edit, Trash2, Ban, CheckCircle, Mail, Key, 
-  Database, Fingerprint, Clock, ExternalLink, MoreVertical, X, Save, AlertTriangle, Copy, RefreshCw
+  Database, Fingerprint, Clock, ExternalLink, MoreVertical, X, Save, AlertTriangle, Copy, RefreshCw,
+  ShieldCheck
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
@@ -39,6 +40,16 @@ export const AdminPanel: React.FC = () => {
     persistenceService.saveUserGlobally(updatedUser);
     loadUsers();
     notify(`Usuário ${user.name} ${newStatus === 'suspended' ? 'suspenso' : 'reativado'}.`);
+  };
+
+  const handleToggleApproveInstructor = (user: User) => {
+    const updatedUser = { ...user, instructorApproved: !user.instructorApproved };
+    persistenceService.saveUserGlobally(updatedUser);
+    loadUsers();
+    notify(
+      `Acesso de Instrutor para ${user.name} ${updatedUser.instructorApproved ? 'AUTORIZADO' : 'REVOGADO'} imediatamente.`, 
+      updatedUser.instructorApproved ? 'success' : 'error'
+    );
   };
 
   const handleDelete = (userId: string) => {
@@ -152,11 +163,21 @@ export const AdminPanel: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                       <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter ${u.status === 'suspended' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
-                         {u.status === 'suspended' ? 'Suspenso' : 'Ativo'}
-                       </span>
-                       {u.isVerified && <CheckCircle size={12} className="text-blue-500" title="E-mail Verificado"/>}
+                    <div className="flex flex-col gap-1">
+                       <div className="flex items-center gap-2">
+                          <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter ${u.status === 'suspended' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                            {u.status === 'suspended' ? 'Suspenso' : 'Ativo'}
+                          </span>
+                          {u.isVerified && <CheckCircle size={12} className="text-blue-500" title="E-mail Verificado"/>}
+                       </div>
+                       {u.role === UserRole.INSTRUCTOR && (
+                         <div className="flex items-center gap-1">
+                            <ShieldCheck size={10} className={u.instructorApproved ? 'text-green-500' : 'text-slate-300'}/>
+                            <span className={`text-[9px] font-black uppercase ${u.instructorApproved ? 'text-green-600' : 'text-slate-400'}`}>
+                               {u.instructorApproved ? 'Instrutor Autorizado' : 'Pendente de Avaliação'}
+                            </span>
+                         </div>
+                       )}
                     </div>
                   </td>
                   <td className="px-6 py-4">
@@ -170,6 +191,15 @@ export const AdminPanel: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
+                      {u.role === UserRole.INSTRUCTOR && (
+                        <button 
+                          onClick={() => handleToggleApproveInstructor(u)} 
+                          className={`p-2 transition ${u.instructorApproved ? 'text-green-600' : 'text-slate-400 hover:text-green-500'}`} 
+                          title={u.instructorApproved ? 'Revogar Autorização' : 'Autorizar Acesso Instrutor'}
+                        >
+                          <ShieldCheck size={16}/>
+                        </button>
+                      )}
                       <button onClick={() => setEditingUser(u)} className="p-2 text-slate-400 hover:text-blue-600 transition" title="Editar Dados"><Edit size={16}/></button>
                       <button onClick={() => handleSendRecovery(u.email)} className="p-2 text-slate-400 hover:text-accent-gold transition" title="Recuperar Senha"><Key size={16}/></button>
                       <button onClick={() => handleToggleSuspend(u)} className={`p-2 transition ${u.status === 'suspended' ? 'text-green-500' : 'text-slate-400 hover:text-red-600'}`} title={u.status === 'suspended' ? 'Ativar Conta' : 'Suspender Conta'}>
@@ -227,7 +257,7 @@ export const AdminPanel: React.FC = () => {
                        <select 
                          value={editingUser.role} 
                          onChange={e=>setEditingUser({...editingUser, role: e.target.value as UserRole})}
-                         className="w-full p-3 bg-slate-50 border rounded-xl text-sm font-bold text-legal-900"
+                         className="w-full p-3 bg-slate-50 border rounded-xl text-sm font-bold text-legal-900" 
                        >
                           <option value={UserRole.STUDENT}>Estudante</option>
                           <option value={UserRole.LAWYER}>Advogado(a)</option>
@@ -240,7 +270,7 @@ export const AdminPanel: React.FC = () => {
                        <select 
                          value={editingUser.plan} 
                          onChange={e=>setEditingUser({...editingUser, plan: e.target.value as 'FREE' | 'PREMIUM'})}
-                         className="w-full p-3 bg-slate-50 border rounded-xl text-sm font-bold text-legal-900"
+                         className="w-full p-3 bg-slate-50 border rounded-xl text-sm font-bold text-legal-900" 
                        >
                           <option value="FREE">Gratuito</option>
                           <option value="PREMIUM">Premium</option>
@@ -248,7 +278,7 @@ export const AdminPanel: React.FC = () => {
                     </div>
                  </div>
                  <button type="submit" className="w-full py-4 bg-red-600 text-white rounded-2xl font-bold shadow-lg hover:bg-red-700 transition-all flex items-center justify-center gap-2">
-                    <Save size={18}/> Salvar Alterações no BD
+                    <RefreshCw size={18}/> Salvar Alterações e Sincronizar
                  </button>
               </div>
            </form>
