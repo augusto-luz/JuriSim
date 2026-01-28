@@ -170,7 +170,8 @@ export const ScenariosView: React.FC<ScenariosViewProps> = ({ onStartScenario, u
           </div>
           
           {activeTab === 'library' && groupedScenarios ? (
-            Object.entries(groupedScenarios).map(([area, areaScenarios]) => (
+            /* Fix: Explicitly cast Object.entries result to resolve 'unknown' type errors for areaScenarios */
+            (Object.entries(groupedScenarios) as [string, Scenario[]][]).map(([area, areaScenarios]) => (
               <div key={area} className="space-y-6">
                 <div className="flex items-center gap-3 border-b-2 border-slate-100 pb-2">
                    <h2 className="text-xl font-serif font-bold text-legal-900">{area}</h2>

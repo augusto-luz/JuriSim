@@ -4,7 +4,7 @@ import { persistenceService } from '../services/persistence';
 import { User, UserRole } from '../types';
 import { 
   Users, Search, ShieldAlert, Edit, Trash2, Ban, CheckCircle, Mail, Key, 
-  Database, Fingerprint, Clock, ExternalLink, MoreVertical, X, Save, AlertTriangle, Copy
+  Database, Fingerprint, Clock, ExternalLink, MoreVertical, X, Save, AlertTriangle, Copy, RefreshCw
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
@@ -12,15 +12,21 @@ export const AdminPanel: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [notification, setNotification] = useState<{msg: string, type: 'success' | 'error'} | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const loadUsers = () => {
+    setIsRefreshing(true);
+    // Pequeno delay para feedback visual de carregamento
+    setTimeout(() => {
+      const data = persistenceService.getAllUsers();
+      setUsers(data);
+      setIsRefreshing(false);
+    }, 300);
+  };
 
   useEffect(() => {
     loadUsers();
   }, []);
-
-  const loadUsers = () => {
-    const data = persistenceService.getAllUsers();
-    setUsers([...data]); // Garante nova referência para trigger de render
-  };
 
   const notify = (msg: string, type: 'success' | 'error' = 'success') => {
     setNotification({ msg, type });
@@ -36,14 +42,14 @@ export const AdminPanel: React.FC = () => {
   };
 
   const handleDelete = (userId: string) => {
-    if (userId === 'admin-master') {
+    if (userId === 'JURI-0001' || userId === 'admin-master') {
       notify("Não é possível excluir a conta mestre do sistema.", 'error');
       return;
     }
 
     if (confirm("ATENÇÃO: A exclusão é irreversível. Todos os dados, histórico de audiências e performance deste usuário serão apagados permanentemente do banco de dados. Deseja prosseguir?")) {
       persistenceService.deleteUser(userId);
-      loadUsers(); // Recarrega a lista do localStorage
+      loadUsers();
       notify("Registro removido do banco de dados com sucesso.", 'error');
     }
   };
@@ -83,10 +89,16 @@ export const AdminPanel: React.FC = () => {
            <p className="text-sm text-slate-500 mt-1">Gestão centralizada de usuários e integridade do banco de dados.</p>
         </div>
         <div className="flex gap-4">
-           <div className="bg-white border rounded-xl px-4 py-2 flex items-center gap-3 shadow-sm">
-              <Database size={16} className="text-slate-400"/>
-              <span className="text-xs font-bold text-slate-600 uppercase tracking-widest">{users.length} Registros</span>
-           </div>
+           <button 
+             onClick={loadUsers} 
+             disabled={isRefreshing}
+             className="bg-white border rounded-xl px-4 py-2 flex items-center gap-3 shadow-sm hover:bg-slate-50 transition active:scale-95 disabled:opacity-50"
+           >
+              <RefreshCw size={16} className={`text-slate-400 ${isRefreshing ? 'animate-spin' : ''}`}/>
+              <span className="text-xs font-bold text-slate-600 uppercase tracking-widest">
+                {isRefreshing ? 'Sincronizando...' : `${users.length} Registros`}
+              </span>
+           </button>
         </div>
       </div>
 
@@ -140,9 +152,12 @@ export const AdminPanel: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter ${u.status === 'suspended' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
-                      {u.status === 'suspended' ? 'Suspenso' : 'Ativo'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                       <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter ${u.status === 'suspended' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                         {u.status === 'suspended' ? 'Suspenso' : 'Ativo'}
+                       </span>
+                       {u.isVerified && <CheckCircle size={12} className="text-blue-500" title="E-mail Verificado"/>}
+                    </div>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2 group cursor-pointer" onClick={() => copyUserId(u.id)}>
@@ -160,7 +175,7 @@ export const AdminPanel: React.FC = () => {
                       <button onClick={() => handleToggleSuspend(u)} className={`p-2 transition ${u.status === 'suspended' ? 'text-green-500' : 'text-slate-400 hover:text-red-600'}`} title={u.status === 'suspended' ? 'Ativar Conta' : 'Suspender Conta'}>
                         <Ban size={16}/>
                       </button>
-                      {u.id !== 'admin-master' && (
+                      {(u.id !== 'JURI-0001' && u.id !== 'admin-master') && (
                         <button onClick={() => handleDelete(u.id)} className="p-2 text-slate-400 hover:text-red-600 transition" title="Excluir Permanentemente"><Trash2 size={16}/></button>
                       )}
                     </div>
@@ -171,7 +186,7 @@ export const AdminPanel: React.FC = () => {
           </table>
           {filteredUsers.length === 0 && (
             <div className="p-20 text-center text-slate-400 italic">
-              Nenhum usuário encontrado com os termos de pesquisa informados.
+              {users.length === 0 ? "O banco de dados de usuários está vazio." : "Nenhum usuário encontrado com os termos de pesquisa informados."}
             </div>
           )}
         </div>

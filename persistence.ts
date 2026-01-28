@@ -2,7 +2,7 @@
 import { ChatMessage, User, Scenario, StudentReport, CourtRole, UserPerformance, SocialMessage, ClassRoom } from './types';
 import { SCENARIOS } from './constants';
 
-const DB_VERSION = '1.9';
+const DB_VERSION = '2.0';
 const KEYS = {
   VERSION: 'jurisim_db_v',
   USER: 'jurisim_user',
@@ -43,22 +43,38 @@ export const persistenceService = {
   },
 
   getAllUsers: (): User[] => {
-    return persistenceService._safeGet(KEYS.ALL_USERS) || [];
+    const users = persistenceService._safeGet(KEYS.ALL_USERS);
+    return Array.isArray(users) ? users : [];
   },
 
   saveUserGlobally: (user: User) => {
+    if (!user || !user.email) return;
+    
     const users = persistenceService.getAllUsers();
     const index = users.findIndex(u => 
       u.id === user.id || 
       u.email.toLowerCase() === user.email.toLowerCase()
     );
 
-    if (index !== -1) {
-      users[index] = { ...users[index], ...user };
-    } else {
-      users.push(user);
+    const updatedUser = { ...user };
+    if (updatedUser.password === undefined && index !== -1) {
+       updatedUser.password = users[index].password;
     }
+
+    if (index !== -1) {
+      users[index] = { ...users[index], ...updatedUser };
+    } else {
+      users.push(updatedUser);
+    }
+    
     persistenceService._safeSave(KEYS.ALL_USERS, users);
+    
+    // Sincroniza com a sessão se for o usuário atual
+    const currentSession = persistenceService.restoreSession();
+    if (currentSession && currentSession.id === user.id) {
+       const storage = localStorage.getItem(KEYS.USER) ? localStorage : sessionStorage;
+       storage.setItem(KEYS.USER, JSON.stringify(users[index !== -1 ? index : users.length - 1]));
+    }
   },
 
   saveSession: (user: User, remember: boolean) => {
@@ -73,7 +89,8 @@ export const persistenceService = {
     try {
       const sessionUser = JSON.parse(userStored);
       const allUsers = persistenceService.getAllUsers();
-      return allUsers.find(u => u.id === sessionUser.id) || null;
+      // Sempre retorna a versão mais recente do "banco de dados" global
+      return allUsers.find(u => u.id === sessionUser.id) || sessionUser;
     } catch (e) { return null; }
   },
 
@@ -82,7 +99,6 @@ export const persistenceService = {
     sessionStorage.removeItem(KEYS.USER);
   },
 
-  // Outros métodos (GetClasses, SaveClass, etc.) mantidos iguais...
   getClasses: (instructorId: string): ClassRoom[] => {
     const all = persistenceService._safeGet(KEYS.CLASSES) || [];
     return Array.isArray(all) ? all.filter((c: ClassRoom) => c.instructorId === instructorId) : [];
@@ -196,6 +212,23 @@ export const persistenceService = {
   getRoleForRoom: (userId: string, roomId: string): CourtRole | null => {
     const h = persistenceService.getRoomHistory(userId).find(x => x.roomId === roomId);
     return h ? h.role : null;
+  },
+
+  saveSocialMessage: (msg: SocialMessage) => {
+    const chatKey = [msg.fromId, msg.toId].sort().join('_');
+    const history = persistenceService._safeGet(KEYS.SOCIAL_MESSAGES + chatKey) || [];
+    persistenceService._safeSave(KEYS.SOCIAL_MESSAGES + chatKey, [...history, msg].slice(-100));
+  },
+
+  getSocialMessages: (userId: string, friendId: string): SocialMessage[] => {
+    const chatKey = [userId, friendId].sort().join('_');
+    return persistenceService._safeGet(KEYS.SOCIAL_MESSAGES + chatKey) || [];
+  },
+
+  deleteUser: (userId: string) => {
+    const users = persistenceService.getAllUsers();
+    const filtered = users.filter(u => u.id !== userId);
+    persistenceService._safeSave(KEYS.ALL_USERS, filtered);
   },
 
   resetAll: () => {

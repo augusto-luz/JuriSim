@@ -91,18 +91,24 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       const allUsers = persistenceService.getAllUsers();
       let targetUser = allUsers.find(u => u.email.toLowerCase() === emailLow);
 
-      if (isMaster && !targetUser) {
-        targetUser = {
-          id: 'JURI-0001',
-          name: "Admin Augusto",
-          email: MASTER_ADMIN_EMAIL,
-          role: UserRole.ADMIN,
-          status: 'active',
-          isVerified: true,
-          plan: 'PREMIUM',
-          password: MASTER_ADMIN_PASS
-        };
-        persistenceService.saveUserGlobally(targetUser);
+      if (isMaster) {
+        if (!targetUser) {
+           targetUser = {
+             id: 'JURI-0001',
+             name: "Admin Augusto",
+             email: MASTER_ADMIN_EMAIL,
+             role: UserRole.ADMIN,
+             status: 'active',
+             isVerified: true,
+             plan: 'PREMIUM',
+             password: MASTER_ADMIN_PASS
+           };
+           persistenceService.saveUserGlobally(targetUser);
+        } else if (targetUser.role !== UserRole.ADMIN) {
+           targetUser.role = UserRole.ADMIN;
+           targetUser.isVerified = true;
+           persistenceService.saveUserGlobally(targetUser);
+        }
       }
 
       if (!targetUser || targetUser.password !== formData.password) {
@@ -114,6 +120,12 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       if (!targetUser.isVerified && targetUser.role !== UserRole.ADMIN) {
         setJustRegisteredUser(targetUser);
         setIsConfirmingEmail(true);
+        setIsLoading(false);
+        return;
+      }
+
+      if (targetUser.status === 'suspended') {
+        setError("Sua conta está suspensa. Entre em contato com a administração.");
         setIsLoading(false);
         return;
       }
