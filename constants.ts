@@ -1,11 +1,14 @@
 
-import { Scenario, UserRole } from './types';
+import { Scenario, UserRole, User } from './types';
 
-export const MOCK_USER = {
+// Updated MOCK_USER with required User properties to fix type errors in App.tsx
+export const MOCK_USER: User = {
   id: '1',
   name: 'Dr. Augusto',
   email: 'augusto@jurisim.com',
-  role: UserRole.STUDENT
+  role: UserRole.STUDENT,
+  status: 'active',
+  isVerified: true
 };
 
 export const SCENARIOS: Scenario[] = [
@@ -314,7 +317,7 @@ REGRAS DE INTERAÇÃO:
 - Se o Usuário terminar sua fala, o JUIZ deve intervir para dar andamento ou questionar.
 - Se o JUIZ passar a palavra para a Parte Contrária, VOCÊ MESMO escreve a fala da Parte Contrária na mesma resposta.
 - Utilize linguagem jurídica formal (jurisprudência, ritos, artigos).
-- Seja combativo. Se o usuário cometer um erro processual, a Parte Contrária deve arguir e o Juiz deve decidir.
+- Seja combativo. Se o usuário cometer um error processual, a Parte Contrária deve arguir e o Juiz deve decidir.
 
 FORMATO:
 [JUIZ]: Texto...

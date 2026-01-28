@@ -31,7 +31,7 @@ export interface UserPerformance {
 }
 
 export interface User {
-  id: string;
+  id: string; // Network ID (ex: JURI-XXXX)
   name: string;
   email: string;
   role: UserRole;
@@ -41,7 +41,13 @@ export interface User {
   organizationId?: string;
   performance?: UserPerformance;
   friends?: string[];
-  instructorApproved?: boolean; // Permissão solicitada ao Admin
+  instructorApproved?: boolean;
+  isVerified: boolean;
+  // Campos específicos por categoria
+  institution?: string; // Estudante e Instrutor
+  period?: string;      // Estudante
+  oab?: string;         // Advogado e Instrutor (opcional)
+  course?: string;      // Estudante (cursos preparatórios)
 }
 
 export interface Attachment {
