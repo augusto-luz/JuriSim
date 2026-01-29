@@ -63,7 +63,8 @@ export interface Scenario {
   title: string;
   description: string;
   difficulty: 'Iniciante' | 'Intermediário' | 'Avançado';
-  area: 'Civil' | 'Penal' | 'Trabalhista' | 'Empresarial';
+  // Adicionado 'Administrativo' para suportar os cenários definidos em constants.ts
+  area: 'Civil' | 'Penal' | 'Trabalhista' | 'Empresarial' | 'Administrativo';
   progress: number;
   facts: string;
   evidence: string[];
