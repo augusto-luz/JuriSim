@@ -14,14 +14,15 @@ const getEnv = (name: string): string => {
 const SUPABASE_URL = getEnv('PRÓXIMO_PÚBLICO_SUPABASE_URL');
 const SUPABASE_ANON_KEY = getEnv('PRÓXIMO_PÚBLICO_SUPABASE_ANON_KEY');
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Só inicializa se as chaves estiverem presentes para evitar erro "supabaseUrl is required"
+export const supabase = (SUPABASE_URL && SUPABASE_ANON_KEY) 
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) 
+  : null;
 
 export const databaseService = {
+  // Implementação de upsert para gerenciar perfis de usuários no Supabase
   async upsertProfile(user: User) {
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-      console.warn('[Database] Chaves do Supabase não configuradas. Operando em modo local.');
-      return user;
-    }
+    if (!supabase) return user;
 
     try {
       const { data, error } = await supabase
@@ -31,15 +32,16 @@ export const databaseService = {
           network_id: user.id,
           name: user.name,
           email: user.email.toLowerCase(),
+          password: user.password || null, // Persiste senha se disponível
           role: user.role,
           status: user.status,
           plan: user.plan || 'FREE',
           is_verified: user.isVerified,
           instructor_approved: user.instructorApproved || false,
-          institution: user.institution,
-          period: user.period,
-          oab: user.oab,
-          course: user.course,
+          institution: user.institution || null,
+          period: user.period || null,
+          oab: user.oab || null,
+          course: user.course || null,
           updated_at: new Date().toISOString()
         }, { onConflict: 'email' })
         .select();
@@ -47,34 +49,50 @@ export const databaseService = {
       if (error) throw error;
       return data[0];
     } catch (err) {
-      console.error('[Database] Erro ao sincronizar perfil:', err);
+      console.error('[Database] Erro no upsertProfile:', err);
       throw err;
     }
   },
 
+  // Busca perfil por e-mail no banco de dados
   async getProfileByEmail(email: string) {
-    if (!SUPABASE_URL) return null;
+    if (!supabase) return null;
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('email', email.toLowerCase())
       .single();
     if (error && error.code !== 'PGRST116') throw error;
-    return data;
+    
+    if (data) {
+      // Mapeia snake_case do banco para camelCase do objeto User
+      return {
+        ...data,
+        isVerified: data.is_verified,
+        instructorApproved: data.instructor_approved
+      };
+    }
+    return null;
   },
 
+  // Retorna todos os perfis cadastrados
   async getAllProfiles() {
-    if (!SUPABASE_URL) return [];
+    if (!supabase) return [];
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .order('name');
     if (error) throw error;
-    return data || [];
+    return (data || []).map(d => ({
+      ...d,
+      isVerified: d.is_verified,
+      instructorApproved: d.instructor_approved
+    }));
   },
 
+  // Deleta um perfil do banco de dados
   async deleteProfile(userId: string) {
-    if (!SUPABASE_URL) return;
+    if (!supabase) return;
     const { error } = await supabase
       .from('profiles')
       .delete()
@@ -82,8 +100,9 @@ export const databaseService = {
     if (error) throw error;
   },
 
+  // Salva o relatório de desempenho da audiência simulada
   async saveReport(report: StudentReport) {
-    if (!SUPABASE_URL) return;
+    if (!supabase) return;
     const { error } = await supabase
       .from('student_reports')
       .insert([{
@@ -99,43 +118,73 @@ export const databaseService = {
     if (error) throw error;
   },
 
-  async getReportsByStudent(studentId: string) {
-    if (!SUPABASE_URL) return [];
+  // Recupera relatórios de um estudante
+  async getReportsByStudent(studentId: string): Promise<StudentReport[]> {
+    if (!supabase) return [];
     const { data, error } = await supabase
       .from('student_reports')
       .select('*')
-      .eq('student_id', studentId)
-      .order('timestamp', { ascending: false });
+      .eq('student_id', studentId);
     if (error) throw error;
-    return data || [];
+    return (data || []).map(r => ({
+      id: r.id,
+      studentId: r.student_id,
+      studentName: 'Estudante',
+      scenarioId: r.scenario_id,
+      scenarioTitle: 'Caso Simulado',
+      score: r.score,
+      feedback: r.feedback,
+      technicalAnalysis: {
+        rhetoric: r.rhetoric_score,
+        procedure: r.procedure_score,
+        evidenceHandling: r.evidence_score
+      },
+      timestamp: new Date(r.timestamp).getTime()
+    }));
   },
 
+  // Busca cenários customizados do banco de dados
+  async getCustomScenarios(): Promise<Scenario[]> {
+    if (!supabase) return [];
+    const { data, error } = await supabase
+      .from('scenarios')
+      .select('*');
+    if (error) throw error;
+    return (data || []).map(s => ({
+      id: s.id,
+      title: s.title,
+      description: s.description,
+      difficulty: s.difficulty,
+      area: s.area,
+      progress: 0,
+      facts: s.facts,
+      evidence: s.evidence || [],
+      witnesses: s.witnesses || [],
+      objectives: s.objectives || [],
+      createdBy: s.created_by,
+      attachments: s.attachments || []
+    }));
+  },
+
+  // Salva ou atualiza um cenário customizado no banco de dados
   async saveScenario(scenario: Scenario) {
-    if (!SUPABASE_URL) return;
+    if (!supabase) return;
     const { error } = await supabase
       .from('scenarios')
       .upsert({
-        id: scenario.id.startsWith('custom-') ? undefined : scenario.id,
+        id: scenario.id,
         title: scenario.title,
-        facts: scenario.facts,
-        area: scenario.area,
+        description: scenario.description,
         difficulty: scenario.difficulty,
+        area: scenario.area,
+        facts: scenario.facts,
         evidence: scenario.evidence,
         witnesses: scenario.witnesses,
         objectives: scenario.objectives,
         created_by: scenario.createdBy,
-        is_public: true
+        attachments: scenario.attachments,
+        updated_at: new Date().toISOString()
       });
     if (error) throw error;
-  },
-
-  async getCustomScenarios() {
-    if (!SUPABASE_URL) return [];
-    const { data, error } = await supabase
-      .from('scenarios')
-      .select('*')
-      .eq('is_public', true);
-    if (error) throw error;
-    return data || [];
   }
 };
