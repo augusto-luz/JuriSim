@@ -1,97 +1,34 @@
 
-import { ChatMessage, User, Scenario, StudentReport, CourtRole, UserPerformance, SocialMessage, ClassRoom } from './types';
+import { ChatMessage, User, Scenario, StudentReport, UserPerformance } from './types';
 import { SCENARIOS } from './constants';
+import { databaseService } from './database';
 
-const DB_VERSION = '2.0';
+const DB_VERSION = '3.0-prod';
 const KEYS = {
-  VERSION: 'jurisim_db_v',
   USER: 'jurisim_user',
-  ALL_USERS: 'jurisim_all_users_list',
-  CHAT_HISTORY: 'jurisim_chat_',
-  SCENARIO_PROGRESS: 'jurisim_progress_',
-  CUSTOM_SCENARIOS: 'jurisim_custom_scenarios_global',
-  REPORTS: 'jurisim_reports_all',
-  ROOM_HISTORY: 'jurisim_room_history_',
-  PERFORMANCE: 'jurisim_performance_',
-  SOCIAL_MESSAGES: 'jurisim_social_msg_',
-  CLASS_MESSAGES: 'jurisim_class_msg_',
-  FRIENDS: 'jurisim_friends_',
-  CLASSES: 'jurisim_classes_all'
+  CACHE_USERS: 'jurisim_cache_users',
+  PERF_PREFIX: 'jurisim_performance_'
 };
 
 export const persistenceService = {
   _init: () => {
-    try {
-      const currentVersion = localStorage.getItem(KEYS.VERSION);
-      if (currentVersion !== DB_VERSION) {
-        localStorage.setItem(KEYS.VERSION, DB_VERSION);
-      }
-    } catch (e) { }
-  },
-
-  _safeSave: (key: string, value: any) => {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch (e) { }
-  },
-
-  _safeGet: (key: string): any | null => {
-    try {
-      const data = localStorage.getItem(key);
-      return data ? JSON.parse(data) : null;
-    } catch (e) { return null; }
-  },
-
-  getAllUsers: (): User[] => {
-    const users = persistenceService._safeGet(KEYS.ALL_USERS);
-    return Array.isArray(users) ? users : [];
-  },
-
-  saveUserGlobally: (user: User) => {
-    if (!user || !user.email) return;
-    
-    const users = persistenceService.getAllUsers();
-    const index = users.findIndex(u => 
-      u.id === user.id || 
-      u.email.toLowerCase() === user.email.toLowerCase()
-    );
-
-    const updatedUser = { ...user };
-    if (updatedUser.password === undefined && index !== -1) {
-       updatedUser.password = users[index].password;
-    }
-
-    if (index !== -1) {
-      users[index] = { ...users[index], ...updatedUser };
-    } else {
-      users.push(updatedUser);
-    }
-    
-    persistenceService._safeSave(KEYS.ALL_USERS, users);
-    
-    // Sincroniza com a sessão se for o usuário atual
-    const currentSession = persistenceService.restoreSession();
-    if (currentSession && currentSession.id === user.id) {
-       const storage = localStorage.getItem(KEYS.USER) ? localStorage : sessionStorage;
-       storage.setItem(KEYS.USER, JSON.stringify(users[index !== -1 ? index : users.length - 1]));
-    }
+    localStorage.setItem('jurisim_version', DB_VERSION);
   },
 
   saveSession: (user: User, remember: boolean) => {
     const storage = remember ? localStorage : sessionStorage;
     storage.setItem(KEYS.USER, JSON.stringify(user));
-    persistenceService.saveUserGlobally(user);
+    databaseService.upsertProfile(user).catch(err => console.error('Sync error:', err));
   },
 
   restoreSession: (): User | null => {
-    const userStored = sessionStorage.getItem(KEYS.USER) || localStorage.getItem(KEYS.USER);
-    if (!userStored) return null;
+    const stored = sessionStorage.getItem(KEYS.USER) || localStorage.getItem(KEYS.USER);
+    if (!stored) return null;
     try {
-      const sessionUser = JSON.parse(userStored);
-      const allUsers = persistenceService.getAllUsers();
-      // Sempre retorna a versão mais recente do "banco de dados" global
-      return allUsers.find(u => u.id === sessionUser.id) || sessionUser;
-    } catch (e) { return null; }
+      return JSON.parse(stored);
+    } catch {
+      return null;
+    }
   },
 
   clearSession: () => {
@@ -99,136 +36,128 @@ export const persistenceService = {
     sessionStorage.removeItem(KEYS.USER);
   },
 
-  getClasses: (instructorId: string): ClassRoom[] => {
-    const all = persistenceService._safeGet(KEYS.CLASSES) || [];
-    return Array.isArray(all) ? all.filter((c: ClassRoom) => c.instructorId === instructorId) : [];
-  },
-
-  saveClass: (classObj: ClassRoom) => {
-    const all = persistenceService._safeGet(KEYS.CLASSES) || [];
-    const dataArray = Array.isArray(all) ? all : [];
-    const index = dataArray.findIndex((c: ClassRoom) => c.id === classObj.id);
-    if (index !== -1) dataArray[index] = classObj;
-    else dataArray.push(classObj);
-    persistenceService._safeSave(KEYS.CLASSES, dataArray);
-  },
-
-  deleteClass: (classId: string) => {
-    const all = persistenceService._safeGet(KEYS.CLASSES) || [];
-    if (!Array.isArray(all)) return;
-    const filtered = all.filter((c: ClassRoom) => c.id !== classId);
-    persistenceService._safeSave(KEYS.CLASSES, filtered);
-  },
-
-  getCustomScenarios: (userId?: string): Scenario[] => {
-    const all = persistenceService._safeGet(KEYS.CUSTOM_SCENARIOS) || [];
-    if (!Array.isArray(all)) return [];
-    if (userId) return all.filter((s: Scenario) => s.createdBy === userId);
-    return all;
-  },
-
-  saveCustomScenario: (scenario: Scenario) => {
-    const all = persistenceService._safeGet(KEYS.CUSTOM_SCENARIOS) || [];
-    const dataArray = Array.isArray(all) ? all : [];
-    const index = dataArray.findIndex((s: Scenario) => s.id === scenario.id);
-    if (index !== -1) dataArray[index] = scenario;
-    else dataArray.push(scenario);
-    persistenceService._safeSave(KEYS.CUSTOM_SCENARIOS, dataArray);
-  },
-
-  deleteCustomScenario: (scenarioId: string) => {
-    const all = persistenceService._safeGet(KEYS.CUSTOM_SCENARIOS) || [];
-    if (!Array.isArray(all)) return;
-    const filtered = all.filter((s: Scenario) => s.id !== scenarioId);
-    persistenceService._safeSave(KEYS.CUSTOM_SCENARIOS, filtered);
-  },
-
-  getAllReports: (): StudentReport[] => persistenceService._safeGet(KEYS.REPORTS) || [],
-  saveStudentReport: (report: StudentReport) => {
-    const reports = persistenceService.getAllReports();
-    persistenceService._safeSave(KEYS.REPORTS, [...reports, report]);
-  },
-
-  getUserPerformance: (userId: string, userName?: string): UserPerformance => {
-    const key = `${KEYS.PERFORMANCE}${userId}`;
-    let perf = persistenceService._safeGet(key);
-    if (!perf) {
-      perf = { userId, userName: userName || 'Usuário', totalExerciseTime: 0, avgOratory: 0, avgProcedural: 0, avgEvidence: 0, totalSimulations: 0 };
-      persistenceService._safeSave(key, perf);
+  async getAllUsers(): Promise<User[]> {
+    try {
+      const users = await databaseService.getAllProfiles();
+      localStorage.setItem(KEYS.CACHE_USERS, JSON.stringify(users));
+      return users;
+    } catch {
+      const cached = localStorage.getItem(KEYS.CACHE_USERS);
+      return cached ? JSON.parse(cached) : [];
     }
-    return perf;
   },
 
-  getGlobalRankings: (currentUser?: User): UserPerformance[] => {
+  /**
+   * Salva alterações globais (como autorização de instrutor)
+   * Liberado de imediato via banco de dados.
+   */
+  async saveUserGlobally(user: User) {
+    await databaseService.upsertProfile(user);
+    // Força atualização do cache de usuários
+    await this.getAllUsers();
+  },
+
+  async deleteUser(userId: string) {
+    await databaseService.deleteProfile(userId);
+    localStorage.removeItem(`${KEYS.PERF_PREFIX}${userId}`);
+  },
+
+  async saveStudentReport(report: StudentReport) {
+    await databaseService.saveReport(report);
+    this.updatePerformanceStats(report.studentId, report);
+  },
+
+  async getReportsByStudent(studentId: string): Promise<StudentReport[]> {
+    return await databaseService.getReportsByStudent(studentId);
+  },
+
+  async getCustomScenarios(): Promise<Scenario[]> {
+    return await databaseService.getCustomScenarios();
+  },
+
+  async saveCustomScenario(scenario: Scenario) {
+    await databaseService.saveScenario(scenario);
+  },
+
+  // --- Helpers Locais (Síncronos para UI Responsiva) ---
+  getUserPerformance: (userId: string, userName?: string): UserPerformance => {
+    const key = `${KEYS.PERF_PREFIX}${userId}`;
+    const data = localStorage.getItem(key);
+    if (!data) {
+      return { 
+        userId, 
+        userName: userName || 'Usuário', 
+        totalExerciseTime: 0, 
+        avgOratory: 0, 
+        avgProcedural: 0, 
+        avgEvidence: 0, 
+        totalSimulations: 0 
+      };
+    }
+    return JSON.parse(data);
+  },
+
+  updatePerformanceStats: (userId: string, report: StudentReport) => {
+    const perf = persistenceService.getUserPerformance(userId, report.studentName);
+    const n = perf.totalSimulations;
+    perf.avgOratory = Math.round((perf.avgOratory * n + report.technicalAnalysis.rhetoric) / (n + 1));
+    perf.avgProcedural = Math.round((perf.avgProcedural * n + report.technicalAnalysis.procedure) / (n + 1));
+    perf.avgEvidence = Math.round((perf.avgEvidence * n + report.technicalAnalysis.evidenceHandling) / (n + 1));
+    perf.totalSimulations += 1;
+    localStorage.setItem(`${KEYS.PERF_PREFIX}${userId}`, JSON.stringify(perf));
+  },
+
+  getGlobalRankings: (): UserPerformance[] => {
     const rankings: UserPerformance[] = [];
-    const users = persistenceService.getAllUsers();
-    users.forEach(u => {
-        const p = persistenceService._safeGet(`${KEYS.PERFORMANCE}${u.id}`);
-        if(p) rankings.push(p);
+    const users = JSON.parse(localStorage.getItem(KEYS.CACHE_USERS) || '[]');
+    users.forEach((u: User) => {
+      const p = localStorage.getItem(`${KEYS.PERF_PREFIX}${u.id}`);
+      if (p) rankings.push(JSON.parse(p));
     });
     return rankings.sort((a, b) => (b.avgOratory + b.avgProcedural + b.avgEvidence) - (a.avgOratory + a.avgProcedural + a.avgEvidence));
   },
 
-  addFriend: (userId: string, friendId: string) => {
-    const friends = persistenceService._safeGet(`${KEYS.FRIENDS}${userId}`) || [];
-    if (!friends.includes(friendId)) {
-      persistenceService._safeSave(`${KEYS.FRIENDS}${userId}`, [...friends, friendId]);
-    }
+  getScenarioById: (userId: string, scenarioId: string): Scenario | null => {
+    return SCENARIOS.find(s => s.id === scenarioId) || null;
   },
-
-  getFriends: (userId: string): string[] => persistenceService._safeGet(`${KEYS.FRIENDS}${userId}`) || [],
-
-  saveClassMessage: (classId: string, msg: ChatMessage) => {
-    const key = `${KEYS.CLASS_MESSAGES}${classId}`;
-    const history = persistenceService._safeGet(key) || [];
-    persistenceService._safeSave(key, [...history, msg].slice(-200));
-  },
-
-  getClassMessages: (classId: string): ChatMessage[] => persistenceService._safeGet(`${KEYS.CLASS_MESSAGES}${classId}`) || [],
-
-  getScenarioProgress: (userId: string, scenarioId: string): number => persistenceService._safeGet(`${KEYS.SCENARIO_PROGRESS}${userId}_${scenarioId}`) || 0,
-  saveScenarioProgress: (userId: string, scenarioId: string, progress: number) => persistenceService._safeSave(`${KEYS.SCENARIO_PROGRESS}${userId}_${scenarioId}`, progress),
-  
-  getChatHistory: (userId: string, scenarioId: string): ChatMessage[] | null => persistenceService._safeGet(`${KEYS.CHAT_HISTORY}${userId}_${scenarioId}`),
-  saveChatHistory: (userId: string, scenarioId: string, messages: ChatMessage[]) => persistenceService._safeSave(`${KEYS.CHAT_HISTORY}${userId}_${scenarioId}`, messages),
 
   trackExerciseTime: (userId: string, minutes: number) => {
     const perf = persistenceService.getUserPerformance(userId);
     perf.totalExerciseTime += minutes;
-    persistenceService._safeSave(`${KEYS.PERFORMANCE}${userId}`, perf);
+    localStorage.setItem(`${KEYS.PERF_PREFIX}${userId}`, JSON.stringify(perf));
   },
 
-  getScenarioById: (userId: string, scenarioId: string): Scenario | null => {
-    const all = [...SCENARIOS, ...persistenceService.getCustomScenarios()];
-    return all.find(s => s.id === scenarioId) || null;
+  saveScenarioProgress: (userId: string, scenarioId: string, progress: number) => {
+    localStorage.setItem(`jurisim_progress_${userId}_${scenarioId}`, JSON.stringify(progress));
+  },
+
+  getScenarioProgress: (userId: string, scenarioId: string): number => {
+    const data = localStorage.getItem(`jurisim_progress_${userId}_${scenarioId}`);
+    return data ? JSON.parse(data) : 0;
+  },
+
+  saveChatHistory: (userId: string, scenarioId: string, messages: ChatMessage[]) => {
+    localStorage.setItem(`jurisim_chat_${userId}_${scenarioId}`, JSON.stringify(messages));
+  },
+
+  getChatHistory: (userId: string, scenarioId: string): ChatMessage[] | null => {
+    const data = localStorage.getItem(`jurisim_chat_${userId}_${scenarioId}`);
+    return data ? JSON.parse(data) : null;
   },
 
   saveRoomHistory: (userId: string, entry: any) => {
-    const history = persistenceService._safeGet(`${KEYS.ROOM_HISTORY}${userId}`) || [];
-    persistenceService._safeSave(`${KEYS.ROOM_HISTORY}${userId}`, [entry, ...history.filter((h:any)=>h.roomId!==entry.roomId)].slice(0, 10));
+    const history = JSON.parse(localStorage.getItem(`jurisim_room_history_${userId}`) || '[]');
+    localStorage.setItem(`jurisim_room_history_${userId}`, JSON.stringify([entry, ...history].slice(0, 10)));
   },
 
-  getRoomHistory: (userId: string): any[] => persistenceService._safeGet(`${KEYS.ROOM_HISTORY}${userId}`) || [],
-  getRoleForRoom: (userId: string, roomId: string): CourtRole | null => {
-    const h = persistenceService.getRoomHistory(userId).find(x => x.roomId === roomId);
-    return h ? h.role : null;
+  getRoomHistory: (userId: string): any[] => {
+    return JSON.parse(localStorage.getItem(`jurisim_room_history_${userId}`) || '[]');
   },
 
-  saveSocialMessage: (msg: SocialMessage) => {
-    const chatKey = [msg.fromId, msg.toId].sort().join('_');
-    const history = persistenceService._safeGet(KEYS.SOCIAL_MESSAGES + chatKey) || [];
-    persistenceService._safeSave(KEYS.SOCIAL_MESSAGES + chatKey, [...history, msg].slice(-100));
-  },
-
-  getSocialMessages: (userId: string, friendId: string): SocialMessage[] => {
-    const chatKey = [userId, friendId].sort().join('_');
-    return persistenceService._safeGet(KEYS.SOCIAL_MESSAGES + chatKey) || [];
-  },
-
-  deleteUser: (userId: string) => {
-    const users = persistenceService.getAllUsers();
-    const filtered = users.filter(u => u.id !== userId);
-    persistenceService._safeSave(KEYS.ALL_USERS, filtered);
+  getRoleForRoom: (userId: string, roomId: string): any => {
+    const history = persistenceService.getRoomHistory(userId);
+    const entry = history.find(h => h.roomId === roomId);
+    return entry ? entry.role : null;
   },
 
   resetAll: () => {

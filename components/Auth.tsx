@@ -1,7 +1,8 @@
 
 import { persistenceService } from '../services/persistence';
+import { databaseService } from '../database';
 import React, { useState } from 'react';
-import { Gavel, ArrowRight, User, ShieldCheck, Lock, Mail, Users, AlertCircle, CheckCircle, School, CreditCard, Send, Fingerprint, ExternalLink } from 'lucide-react';
+import { Gavel, ArrowRight, User, ShieldCheck, Lock, Mail, Users, AlertCircle, CheckCircle, Send, Fingerprint, ExternalLink } from 'lucide-react';
 import { UserRole, User as UserType } from '../types';
 
 interface AuthProps {
@@ -35,29 +36,19 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     return `JURI-${Math.floor(1000 + Math.random() * 9000)}`;
   };
 
-  const handleAuth = (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setIsLoading(true);
 
     const emailLow = formData.email.toLowerCase();
 
-    if (isRegistering) {
-      if (!formData.name.trim()) return setError("Nome é obrigatório.");
-      if (formData.role === UserRole.STUDENT && (!formData.institution || !formData.period)) 
-        return setError("Instituição e período são obrigatórios para estudantes.");
-      if (formData.role === UserRole.LAWYER && !formData.oab) 
-        return setError("Nº da OAB é obrigatório para advogados.");
-      if (formData.role === UserRole.INSTRUCTOR && !formData.institution) 
-        return setError("Nome da instituição é obrigatório para instrutores.");
-    }
-
-    setIsLoading(true);
-
-    if (isRegistering) {
-      setTimeout(() => {
-        const allUsers = persistenceService.getAllUsers();
-        if (allUsers.find(u => u.email.toLowerCase() === emailLow)) {
-          setError("E-mail já cadastrado.");
+    try {
+      if (isRegistering) {
+        // Registro via Supabase
+        const existing = await databaseService.getProfileByEmail(emailLow);
+        if (existing) {
+          setError("E-mail já cadastrado no sistema.");
           setIsLoading(false);
           return;
         }
@@ -67,7 +58,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           name: formData.name,
           email: formData.email,
           role: formData.role,
-          password: formData.password,
+          password: formData.password, // Em produção, usar Supabase Auth p/ hash
           status: 'active',
           isVerified: false,
           institution: formData.institution,
@@ -77,68 +68,53 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           plan: 'FREE'
         };
 
-        persistenceService.saveUserGlobally(newUser);
+        await databaseService.upsertProfile(newUser);
         setJustRegisteredUser(newUser);
         setIsConfirmingEmail(true);
-        setIsLoading(false);
-      }, 1500);
-      return;
-    }
+      } else {
+        // Login via Supabase
+        const isMaster = emailLow === MASTER_ADMIN_EMAIL.toLowerCase() && formData.password === MASTER_ADMIN_PASS;
+        let targetUser = await databaseService.getProfileByEmail(emailLow);
 
-    // Fluxo de Login
-    setTimeout(() => {
-      const isMaster = emailLow === MASTER_ADMIN_EMAIL.toLowerCase() && formData.password === MASTER_ADMIN_PASS;
-      const allUsers = persistenceService.getAllUsers();
-      let targetUser = allUsers.find(u => u.email.toLowerCase() === emailLow);
-
-      if (isMaster) {
-        if (!targetUser) {
-           targetUser = {
-             id: 'JURI-0001',
-             name: "Admin Augusto",
-             email: MASTER_ADMIN_EMAIL,
-             role: UserRole.ADMIN,
-             status: 'active',
-             isVerified: true,
-             plan: 'PREMIUM',
-             password: MASTER_ADMIN_PASS
-           };
-           persistenceService.saveUserGlobally(targetUser);
-        } else if (targetUser.role !== UserRole.ADMIN) {
-           targetUser.role = UserRole.ADMIN;
-           targetUser.isVerified = true;
-           persistenceService.saveUserGlobally(targetUser);
+        if (isMaster && !targetUser) {
+          targetUser = {
+            id: 'JURI-0001',
+            name: "Admin Augusto",
+            email: MASTER_ADMIN_EMAIL,
+            role: UserRole.ADMIN,
+            status: 'active',
+            isVerified: true,
+            plan: 'PREMIUM',
+            password: MASTER_ADMIN_PASS
+          };
+          await databaseService.upsertProfile(targetUser);
         }
-      }
 
-      if (!targetUser || targetUser.password !== formData.password) {
-        setError("Credenciais inválidas.");
-        setIsLoading(false);
-        return;
-      }
+        if (!targetUser || targetUser.password !== formData.password) {
+          setError("E-mail ou senha incorretos.");
+          setIsLoading(false);
+          return;
+        }
 
-      if (!targetUser.isVerified && targetUser.role !== UserRole.ADMIN) {
-        setJustRegisteredUser(targetUser);
-        setIsConfirmingEmail(true);
-        setIsLoading(false);
-        return;
-      }
+        if (targetUser.status === 'suspended') {
+          setError("Conta suspensa. Contate o suporte.");
+          setIsLoading(false);
+          return;
+        }
 
-      if (targetUser.status === 'suspended') {
-        setError("Sua conta está suspensa. Entre em contato com a administração.");
-        setIsLoading(false);
-        return;
+        onLogin(targetUser, rememberMe);
       }
-
-      onLogin(targetUser, rememberMe);
+    } catch (err: any) {
+      setError("Erro de conexão com o servidor: " + (err.message || "Tente novamente"));
+    } finally {
       setIsLoading(false);
-    }, 1200);
+    }
   };
 
-  const handleVerifyNow = () => {
+  const handleVerifyNow = async () => {
     if (justRegisteredUser) {
       const verified = { ...justRegisteredUser, isVerified: true };
-      persistenceService.saveUserGlobally(verified);
+      await databaseService.upsertProfile(verified);
       onLogin(verified, rememberMe);
     }
   };
@@ -173,9 +149,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 <ExternalLink size={20} className="group-hover:rotate-12 transition-transform"/>
                 Confirmar Cadastro e Acessar
               </button>
-              <p className="text-[11px] text-center text-slate-400 font-bold uppercase tracking-widest">
-                Não recebeu? <span className="text-accent-gold cursor-pointer hover:underline">Tentar reenviar e-mail</span>
-              </p>
             </div>
           </div>
         </div>
@@ -197,13 +170,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             </div>
             <h2 className="text-4xl font-serif font-bold mb-6 leading-tight">Excelência na Prática Forense Digital.</h2>
             <p className="text-legal-300 text-lg leading-relaxed font-light">Simulações inteligentes para advogados, professores e estudantes.</p>
-          </div>
-          <div className="relative z-10 p-6 bg-white/5 rounded-3xl border border-white/10 backdrop-blur-sm">
-             <div className="flex items-center gap-3 mb-2">
-                <ShieldCheck size={20} className="text-accent-gold"/>
-                <span className="text-xs font-bold uppercase tracking-widest">Plataforma Homologada</span>
-             </div>
-             <p className="text-[10px] text-legal-400">Ambiente seguro para desenvolvimento de teses e ritos processuais em conformidade com o CPC/CPP.</p>
           </div>
         </div>
 
@@ -250,26 +216,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 </select>
               </div>
             </div>
-
-            {isRegistering && (
-              <div className="space-y-4 animate-in slide-in-from-top-2">
-                {formData.role === UserRole.STUDENT && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <input value={formData.institution} onChange={e => setFormData({...formData, institution: e.target.value})} className="w-full p-4 bg-white border rounded-2xl text-xs font-bold" placeholder="Instituição de Ensino" />
-                    <input value={formData.period} onChange={e => setFormData({...formData, period: e.target.value})} className="w-full p-4 bg-white border rounded-2xl text-xs font-bold" placeholder="Período / Semestre" />
-                  </div>
-                )}
-                {formData.role === UserRole.LAWYER && (
-                  <input value={formData.oab} onChange={e => setFormData({...formData, oab: e.target.value})} className="w-full p-4 bg-white border rounded-2xl text-xs font-bold" placeholder="Nº de Registro OAB (Ex: SP 123456)" />
-                )}
-                {formData.role === UserRole.INSTRUCTOR && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <input value={formData.institution} onChange={e => setFormData({...formData, institution: e.target.value})} className="w-full p-4 bg-white border rounded-2xl text-xs font-bold" placeholder="Instituição Acadêmica" />
-                    <input value={formData.oab} onChange={e => setFormData({...formData, oab: e.target.value})} className="w-full p-4 bg-white border rounded-2xl text-xs font-bold" placeholder="OAB (Opcional)" />
-                  </div>
-                )}
-              </div>
-            )}
 
             {error && <div className="p-4 bg-red-50 text-red-700 text-xs font-bold rounded-2xl border border-red-100 flex items-center gap-3 animate-bounce"><AlertCircle size={16}/>{error}</div>}
 
