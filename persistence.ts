@@ -1,7 +1,7 @@
 
-import { ChatMessage, User, Scenario, StudentReport, UserPerformance } from './types';
-import { SCENARIOS } from './constants';
-import { databaseService } from './database';
+import { ChatMessage, User, Scenario, StudentReport, UserPerformance } from './types.ts';
+import { SCENARIOS } from './constants.ts';
+import { databaseService } from './database.ts';
 
 const DB_VERSION = '3.0-prod';
 const KEYS = {
@@ -47,13 +47,8 @@ export const persistenceService = {
     }
   },
 
-  /**
-   * Salva alterações globais (como autorização de instrutor)
-   * Liberado de imediato via banco de dados.
-   */
   async saveUserGlobally(user: User) {
     await databaseService.upsertProfile(user);
-    // Força atualização do cache de usuários
     await this.getAllUsers();
   },
 
@@ -79,7 +74,6 @@ export const persistenceService = {
     await databaseService.saveScenario(scenario);
   },
 
-  // --- Helpers Locais (Síncronos para UI Responsiva) ---
   getUserPerformance: (userId: string, userName?: string): UserPerformance => {
     const key = `${KEYS.PERF_PREFIX}${userId}`;
     const data = localStorage.getItem(key);

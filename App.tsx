@@ -1,20 +1,20 @@
 
 import React, { useState, useEffect } from 'react';
-import { Auth } from './components/Auth';
-import { Layout } from './components/Layout';
-import { Dashboard } from './components/Dashboard';
-import { SimulationChat } from './components/SimulationChat';
-import { CaseBriefing } from './components/CaseBriefing';
-import { MultiplayerRoom } from './components/MultiplayerRoom';
-import { Pricing } from './components/Pricing';
-import { ScenariosView } from './components/ScenariosView';
-import { MultiplayerLobby } from './components/MultiplayerLobby';
-import { Settings } from './components/Settings';
-import { AdminPanel } from './components/AdminPanel';
-import { InstructorPanel } from './components/InstructorPanel';
-import { persistenceService } from './services/persistence';
-import { MOCK_USER, SCENARIOS } from './constants';
-import { CourtRole, User as UserType, UserRole, Scenario, Attachment } from './types';
+import { Auth } from './components/Auth.tsx';
+import { Layout } from './components/Layout.tsx';
+import { Dashboard } from './components/Dashboard.tsx';
+import { SimulationChat } from './components/SimulationChat.tsx';
+import { CaseBriefing } from './components/CaseBriefing.tsx';
+import { MultiplayerRoom } from './components/MultiplayerRoom.tsx';
+import { Pricing } from './components/Pricing.tsx';
+import { ScenariosView } from './components/ScenariosView.tsx';
+import { MultiplayerLobby } from './components/MultiplayerLobby.tsx';
+import { Settings } from './components/Settings.tsx';
+import { AdminPanel } from './components/AdminPanel.tsx';
+import { InstructorPanel } from './components/InstructorPanel.tsx';
+import { persistenceService } from './services/persistence.ts';
+import { MOCK_USER, SCENARIOS } from './constants.ts';
+import { CourtRole, User as UserType, UserRole, Scenario, Attachment } from './types.ts';
 import { X, User as UserIcon, Shield, Gavel, Scale, Users, PlayCircle, Info, PlusCircle, Save, FileText, Upload, Download, Trash2 } from 'lucide-react';
 
 const generateShortCode = () => {

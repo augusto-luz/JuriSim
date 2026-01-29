@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { ChatMessage, StudentReport } from "../types";
+import { ChatMessage, StudentReport } from "../types.ts";
 
 /**
  * Limpa a resposta do modelo para garantir que apenas o JSON seja processado
@@ -15,6 +15,17 @@ const cleanJsonResponse = (text: string): string => {
 };
 
 /**
+ * Helper para obter a chave de API de forma segura
+ */
+const getApiKey = () => {
+  try {
+    return (typeof process !== 'undefined' && process.env?.API_KEY) || "";
+  } catch {
+    return "";
+  }
+};
+
+/**
  * Gera a resposta dos personagens da audiência (Juiz e Parte Contrária)
  */
 export const generateCharacterResponse = async (
@@ -24,23 +35,19 @@ export const generateCharacterResponse = async (
   userMessage: string
 ): Promise<string> => {
   try {
-    // Inicializa o cliente dentro da função para garantir o uso da chave correta
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = getApiKey();
+    const ai = new GoogleGenAI({ apiKey });
     
     const historyFormatted: any[] = [];
     let lastRole = '';
 
-    // Filtra e formata o histórico para os requisitos da API (deve começar com 'user')
-    // Pegamos as últimas 10 mensagens para manter contexto e reduzir latência
     const recentHistory = history.slice(-10);
 
     for (const h of recentHistory) {
       const role = h.role === 'user' ? 'user' : 'model';
       
-      // A API do Gemini exige que o primeiro turno seja do usuário
       if (historyFormatted.length === 0 && role === 'model') continue;
 
-      // Agrupa mensagens consecutivas do mesmo papel para evitar erro de alternância (400)
       if (role === lastRole && historyFormatted.length > 0) {
         historyFormatted[historyFormatted.length - 1].parts[0].text += `\n${h.senderName}: ${h.text}`;
       } else {
@@ -52,7 +59,6 @@ export const generateCharacterResponse = async (
       }
     }
 
-    // Garantia de segurança: se o histórico estiver vazio ou malformado, envia a mensagem atual
     if (historyFormatted.length === 0) {
       historyFormatted.push({
         role: 'user',
@@ -61,13 +67,13 @@ export const generateCharacterResponse = async (
     }
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview', // Flash é mais estável para acessos simultâneos
+      model: 'gemini-3-flash-preview',
       contents: historyFormatted,
       config: {
         systemInstruction,
         temperature: 0.7,
         topP: 0.9,
-        thinkingConfig: { thinkingBudget: 0 } // Flash é otimizado para respostas rápidas
+        thinkingConfig: { thinkingBudget: 0 }
       }
     });
 
@@ -86,7 +92,8 @@ export const generateLegalEvaluation = async (
   scenarioTitle: string
 ): Promise<any> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = getApiKey();
+    const ai = new GoogleGenAI({ apiKey });
     const chatTranscript = messages.map(m => `${m.senderName}: ${m.text}`).join('\n');
     
     const response = await ai.models.generateContent({

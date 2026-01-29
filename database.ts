@@ -1,14 +1,11 @@
 
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
-import { User, Scenario, StudentReport } from './types';
+import { User, Scenario, StudentReport } from './types.ts';
 
-// Helper para ler variáveis de ambiente em diferentes contextos de build (Vite/Vercel)
 const getEnv = (name: string): string => {
   try {
-    // @ts-ignore
     return (typeof process !== 'undefined' && process.env && process.env[name]) || 
-           // @ts-ignore
-           (import.meta && import.meta.env && import.meta.env[name]) || '';
+           (import.meta && (import.meta as any).env && (import.meta as any).env[name]) || '';
   } catch {
     return '';
   }
@@ -20,10 +17,6 @@ const SUPABASE_ANON_KEY = getEnv('PRÓXIMO_PÚBLICO_SUPABASE_ANON_KEY');
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 export const databaseService = {
-  /**
-   * Sincroniza o perfil do usuário com o Supabase.
-   * Usado para cadastros, logins e autorizações administrativas.
-   */
   async upsertProfile(user: User) {
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
       console.warn('[Database] Chaves do Supabase não configuradas. Operando em modo local.');
