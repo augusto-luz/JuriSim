@@ -62,6 +62,7 @@ const App: React.FC = () => {
       case 'simulation': return <SimulationIA onStartScenario={startScenario} user={user} />;
       case 'scenarios': return <ScenariosView onStartScenario={startScenario} user={user} onUpgrade={() => setCurrentView('pricing')} />;
       case 'multiplayer': return <MultiplayerLobby onStartNewMeeting={() => {}} onJoinMeeting={() => {}} joinCode="" setJoinCode={() => {}} user={user} />;
+      case 'pricing': return <Pricing onSelectPlan={() => {}} onCancel={() => setCurrentView('dashboard')} />;
       case 'admin_panel': return user.role === UserRole.ADMIN ? <AdminPanel /> : <Dashboard onStartScenario={startScenario} user={user} onUpgrade={() => setCurrentView('pricing')} onChangeView={setCurrentView} />;
       case 'instructor_panel': return (user.role === UserRole.INSTRUCTOR || user.role === UserRole.ADMIN) ? <InstructorPanel user={user} /> : <Dashboard onStartScenario={startScenario} user={user} onUpgrade={() => setCurrentView('pricing')} onChangeView={setCurrentView} />;
       case 'settings': return <Settings user={user} onLogout={() => setIsAuthenticated(false)} />;
@@ -82,7 +83,6 @@ const App: React.FC = () => {
            user={user} 
            onClose={() => setIsCaseModalOpen(false)} 
            onSuccess={() => {
-              // Notifica as views para recarregarem os dados se necessário
               window.dispatchEvent(new CustomEvent('CASE_CREATED'));
            }}
         />
