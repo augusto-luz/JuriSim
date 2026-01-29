@@ -12,6 +12,7 @@ import { MultiplayerLobby } from './components/MultiplayerLobby.tsx';
 import { Settings } from './components/Settings.tsx';
 import { AdminPanel } from './components/AdminPanel.tsx';
 import { InstructorPanel } from './components/InstructorPanel.tsx';
+import { NewCaseModal } from './components/NewCaseModal.tsx';
 import { persistenceService } from './services/persistence.ts';
 import { MOCK_USER, SCENARIOS } from './constants.ts';
 import { User as UserType, UserRole } from './types.ts';
@@ -21,6 +22,7 @@ const App: React.FC = () => {
   const [user, setUser] = useState<UserType>(MOCK_USER);
   const [currentView, setCurrentView] = useState('dashboard');
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
+  const [isCaseModalOpen, setIsCaseModalOpen] = useState(false);
 
   useEffect(() => {
     const restored = persistenceService.restoreSession();
@@ -28,6 +30,10 @@ const App: React.FC = () => {
       setUser(restored);
       setIsAuthenticated(true);
     }
+
+    const openModalListener = () => setIsCaseModalOpen(true);
+    window.addEventListener('OPEN_CASE_MODAL', openModalListener);
+    return () => window.removeEventListener('OPEN_CASE_MODAL', openModalListener);
   }, []);
 
   const handleLogin = (loggedUser: UserType, rememberMe: boolean) => {
@@ -66,10 +72,21 @@ const App: React.FC = () => {
   if (!isAuthenticated) return <Auth onLogin={handleLogin} />;
 
   return (
-    <div className="h-screen w-screen overflow-hidden">
+    <div className="h-screen w-screen overflow-hidden relative">
       <Layout user={user} currentView={currentView} onChangeView={setCurrentView} onLogout={() => setIsAuthenticated(false)}>
         {renderContent()}
       </Layout>
+      
+      {isCaseModalOpen && (
+        <NewCaseModal 
+           user={user} 
+           onClose={() => setIsCaseModalOpen(false)} 
+           onSuccess={() => {
+              // Notifica as views para recarregarem os dados se necessário
+              window.dispatchEvent(new CustomEvent('CASE_CREATED'));
+           }}
+        />
+      )}
     </div>
   );
 };
