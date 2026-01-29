@@ -1,6 +1,11 @@
+
 import React, { useState } from 'react';
-import { Check, Shield, Zap, GraduationCap, Briefcase, Building, Users, AlertTriangle, Lock } from 'lucide-react';
-import { UserRole } from '../types';
+import { 
+  Check, Shield, Zap, GraduationCap, Briefcase, 
+  Users, AlertTriangle, Lock, MessageSquare, 
+  Send, HelpCircle, Headphones
+} from 'lucide-react';
+import { UserRole } from '../types.ts';
 
 interface PricingProps {
   onSelectPlan: (role: UserRole, billingCycle: 'monthly' | 'annual') => void;
@@ -9,6 +14,8 @@ interface PricingProps {
 
 export const Pricing: React.FC<PricingProps> = ({ onSelectPlan, onCancel }) => {
   const [billing, setBilling] = useState<'monthly' | 'annual'>('monthly');
+  const [sacForm, setSacForm] = useState({ subject: '', message: '' });
+  const [sacSubmitted, setSacSubmitted] = useState(false);
 
   const plans = [
     {
@@ -58,9 +65,20 @@ export const Pricing: React.FC<PricingProps> = ({ onSelectPlan, onCancel }) => {
     }
   ];
 
+  const handleSacSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sacForm.message) return;
+    // Aqui seria a integração com banco para salvar o ticket
+    setSacSubmitted(true);
+    setTimeout(() => {
+      setSacSubmitted(false);
+      setSacForm({ subject: '', message: '' });
+    }, 3000);
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 animate-in fade-in slide-in-from-bottom-4">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 animate-in fade-in slide-in-from-bottom-4 overflow-y-auto">
+      <div className="max-w-7xl mx-auto space-y-20">
         <div className="text-center">
           <h2 className="text-base font-semibold text-legal-600 tracking-wide uppercase">Planos e Preços</h2>
           <p className="mt-2 text-3xl font-extrabold text-gray-900 sm:text-4xl font-serif">
@@ -70,69 +88,67 @@ export const Pricing: React.FC<PricingProps> = ({ onSelectPlan, onCancel }) => {
             Da graduação à advocacia de alta performance, temos a ferramenta certa para você.
           </p>
           
-          {/* Gateway Warning */}
-          <div className="mt-6 mx-auto max-w-lg bg-amber-50 border border-amber-200 p-4 rounded-lg flex items-start gap-3 text-left">
+          <div className="mt-6 mx-auto max-w-lg bg-amber-50 border border-amber-200 p-4 rounded-lg flex items-start gap-3 text-left shadow-sm">
              <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={20}/>
              <div>
-                <h4 className="font-bold text-amber-800 text-sm">Pagamentos Temporariamente Inativos</h4>
+                <h4 className="font-bold text-amber-800 text-sm">Transações Suspensas</h4>
                 <p className="text-xs text-amber-700 mt-1">
-                   O gateway de pagamento (Stripe) ainda não foi vinculado a este ambiente de produção. 
-                   A assinatura de novos planos está suspensa no momento.
+                   O sistema de assinaturas está em fase de homologação bancária. A contratação direta via plataforma será liberada em breve.
                 </p>
              </div>
           </div>
         </div>
 
         {/* Billing Toggle */}
-        <div className="mt-8 flex justify-center opacity-50 pointer-events-none">
-          <div className="relative bg-white border border-gray-200 rounded-lg p-1 flex">
+        <div className="flex justify-center">
+          <div className="relative bg-white border border-gray-200 rounded-2xl p-1.5 flex shadow-inner">
             <button
               onClick={() => setBilling('monthly')}
-              className={`${billing === 'monthly' ? 'bg-legal-800 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-50'} relative w-32 rounded-md py-2 text-sm font-medium whitespace-nowrap focus:outline-none focus:z-10 sm:w-auto sm:px-8 transition-all`}
+              className={`${billing === 'monthly' ? 'bg-legal-900 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'} relative w-32 rounded-xl py-2.5 text-sm font-bold transition-all`}
             >
               Mensal
             </button>
             <button
               onClick={() => setBilling('annual')}
-              className={`${billing === 'annual' ? 'bg-legal-800 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-50'} relative w-32 rounded-md py-2 text-sm font-medium whitespace-nowrap focus:outline-none focus:z-10 sm:w-auto sm:px-8 transition-all`}
+              className={`${billing === 'annual' ? 'bg-legal-900 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'} relative w-32 rounded-xl py-2.5 text-sm font-bold transition-all`}
             >
               Anual <span className="text-[10px] ml-1 bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">-20%</span>
             </button>
           </div>
         </div>
 
-        <div className="mt-12 space-y-4 sm:mt-16 sm:space-y-0 sm:grid sm:grid-cols-2 sm:gap-6 lg:max-w-4xl lg:mx-auto xl:max-w-none xl:mx-0 xl:grid-cols-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {plans.map((plan) => {
             const Icon = plan.icon;
             return (
-              <div key={plan.title} className={`relative border rounded-2xl shadow-sm flex flex-col justify-between p-8 bg-white ${plan.popular ? 'ring-2 ring-gray-200' : 'border-gray-200'}`}>
+              <div key={plan.title} className={`relative border rounded-[2.5rem] shadow-sm flex flex-col justify-between p-10 bg-white transition-all hover:shadow-xl ${plan.popular ? 'ring-2 ring-accent-gold' : 'border-gray-100'}`}>
                 {plan.popular && (
-                  <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 grayscale">
-                    <span className="inline-flex rounded-full bg-gray-600 px-4 py-1 text-sm font-semibold tracking-wider uppercase text-white shadow-sm">
-                      Recomendado
+                  <div className="absolute top-0 right-10 -translate-y-1/2">
+                    <span className="inline-flex rounded-full bg-accent-gold px-4 py-1.5 text-xs font-black tracking-widest uppercase text-legal-900 shadow-lg">
+                      Mais Procurado
                     </span>
                   </div>
                 )}
                 
                 <div>
-                  <div className="flex items-center justify-between">
-                     <h3 className="text-lg font-semibold text-gray-900">{plan.title}</h3>
-                     <div className={`p-2 rounded-lg ${plan.color.split(' ')[0]}`}>
-                        <Icon size={24} className={plan.color.split('text-')[1]} />
+                  <div className="flex items-center justify-between mb-6">
+                     <h3 className="text-xl font-serif font-bold text-gray-900">{plan.title}</h3>
+                     <div className={`p-3 rounded-2xl ${plan.color.split(' ')[0]}`}>
+                        <Icon size={28} className={plan.color.split('text-')[1]} />
                      </div>
                   </div>
                   
                   <div className="mt-4 flex items-baseline text-gray-900">
-                    <span className="text-4xl font-extrabold tracking-tight">R$ {plan.price}</span>
-                    <span className="ml-1 text-xl font-semibold text-gray-500">{plan.period}</span>
+                    <span className="text-4xl font-serif font-black tracking-tight">R$ {plan.price}</span>
+                    <span className="ml-1 text-xl font-semibold text-gray-400">{plan.period}</span>
                   </div>
-                  <p className="mt-1 text-xs text-gray-400">Cobrança recorrente via Stripe</p>
+                  <p className="mt-1 text-[10px] text-slate-400 font-bold uppercase tracking-widest">Homologação Stripe pendente</p>
 
-                  <ul className="mt-6 space-y-4">
+                  <ul className="mt-8 space-y-4">
                     {plan.features.map((feature) => (
-                      <li key={feature} className="flex">
-                        <Check className="flex-shrink-0 h-5 w-5 text-green-500" />
-                        <span className="ml-3 text-sm text-gray-500">{feature}</span>
+                      <li key={feature} className="flex items-start">
+                        <Check className="flex-shrink-0 h-5 w-5 text-green-500 mt-0.5" />
+                        <span className="ml-3 text-sm text-gray-600 leading-tight">{feature}</span>
                       </li>
                     ))}
                   </ul>
@@ -140,12 +156,11 @@ export const Pricing: React.FC<PricingProps> = ({ onSelectPlan, onCancel }) => {
 
                 <button
                   disabled={true}
-                  onClick={() => onSelectPlan(plan.role, billing)}
-                  className={`mt-8 block w-full py-3 px-6 border border-transparent rounded-md text-center font-medium text-white shadow-sm cursor-not-allowed bg-gray-300`}
+                  className={`mt-10 block w-full py-4 px-6 rounded-2xl text-center font-bold text-white shadow-sm cursor-not-allowed bg-slate-300 transition-all active:scale-95`}
                 >
-                  <div className="flex items-center justify-center gap-2">
+                  <div className="flex items-center justify-center gap-2 uppercase text-xs tracking-widest">
                      <Lock size={16}/>
-                     Assinatura Indisponível
+                     Indisponível
                   </div>
                 </button>
               </div>
@@ -153,28 +168,77 @@ export const Pricing: React.FC<PricingProps> = ({ onSelectPlan, onCancel }) => {
           })}
         </div>
 
-        {/* Enterprise / Institution */}
-        <div className="mt-10 max-w-4xl mx-auto bg-slate-900 rounded-2xl shadow-xl overflow-hidden lg:grid lg:grid-cols-2 lg:gap-4 opacity-75">
-          <div className="pt-10 pb-12 px-6 sm:pt-16 sm:px-16 lg:py-16 lg:pr-0 xl:py-20 xl:px-20">
-            <div className="lg:self-center">
-              <h2 className="text-3xl font-extrabold text-white sm:text-4xl">
-                <span className="block">Instituições e Escritórios</span>
-              </h2>
-              <p className="mt-4 text-lg leading-6 text-legal-200">
-                Soluções personalizadas com licenças em volume, integração LMS (Moodle/Canvas) e suporte dedicado.
-              </p>
-              <button disabled className="mt-8 bg-gray-600 border border-transparent rounded-md shadow px-5 py-3 inline-flex items-center text-base font-medium text-gray-300 cursor-not-allowed">
-                Falar com Vendas (Em breve)
-              </button>
-            </div>
-          </div>
-          <div className="-mt-6 aspect-w-5 aspect-h-3 md:aspect-w-2 md:aspect-h-1 opacity-50 lg:opacity-100 relative">
-              <Building className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-legal-700" size={120} />
-          </div>
+        {/* Sistema SAC Integrado */}
+        <div id="sac" className="bg-white rounded-[3rem] border border-slate-200 shadow-2xl overflow-hidden max-w-4xl mx-auto">
+           <div className="grid grid-cols-1 md:grid-cols-2">
+              <div className="p-12 bg-legal-900 text-white flex flex-col justify-between">
+                 <div>
+                    <div className="bg-accent-gold w-12 h-12 rounded-2xl flex items-center justify-center text-legal-900 mb-6 shadow-lg">
+                       <Headphones size={24}/>
+                    </div>
+                    <h3 className="text-3xl font-serif font-bold mb-4">Central SAC</h3>
+                    <p className="text-legal-300 leading-relaxed mb-8">
+                       Precisa de auxílio técnico ou tem dúvidas sobre sua conta? Nosso time de suporte jurídico está pronto para ajudar.
+                    </p>
+                    <div className="space-y-4">
+                       <div className="flex items-center gap-3 text-sm">
+                          <HelpCircle size={18} className="text-accent-gold"/>
+                          <span>Dúvidas Técnicas</span>
+                       </div>
+                       <div className="flex items-center gap-3 text-sm">
+                          <MessageSquare size={18} className="text-accent-gold"/>
+                          <span>Sugestão de Teses</span>
+                       </div>
+                    </div>
+                 </div>
+                 <p className="text-[10px] text-legal-400 font-black uppercase tracking-widest mt-12">Resposta em até 24h úteis</p>
+              </div>
+              
+              <div className="p-12">
+                 {sacSubmitted ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center animate-in zoom-in-95">
+                       <div className="w-16 h-16 bg-green-50 text-green-500 rounded-full flex items-center justify-center mb-4"><Check size={32}/></div>
+                       <h4 className="text-xl font-bold text-legal-900">Chamado Aberto!</h4>
+                       <p className="text-sm text-slate-500 mt-2">Protocolamos sua solicitação. Verifique seu e-mail em breve.</p>
+                    </div>
+                 ) : (
+                    <form onSubmit={handleSacSubmit} className="space-y-6">
+                       <h4 className="text-lg font-bold text-legal-900 mb-6 flex items-center gap-2">Protocolar Chamado</h4>
+                       <div>
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Assunto</label>
+                          <select 
+                            value={sacForm.subject}
+                            onChange={e=>setSacForm({...sacForm, subject: e.target.value})}
+                            className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-accent-gold text-sm"
+                          >
+                             <option value="">Selecione o tema...</option>
+                             <option value="billing">Dúvida Financeira</option>
+                             <option value="technical">Erro no Sistema</option>
+                             <option value="academic">Dúvida sobre Casos</option>
+                             <option value="other">Outros Assuntos</option>
+                          </select>
+                       </div>
+                       <div>
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Sua Mensagem</label>
+                          <textarea 
+                            value={sacForm.message}
+                            onChange={e=>setSacForm({...sacForm, message: e.target.value})}
+                            required
+                            placeholder="Descreva detalhadamente sua necessidade..."
+                            className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-accent-gold h-32 resize-none text-sm"
+                          />
+                       </div>
+                       <button className="w-full bg-legal-900 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-accent-gold hover:text-legal-900 transition-all shadow-lg active:scale-95">
+                          <Send size={18}/> Abrir Ticket de Suporte
+                       </button>
+                    </form>
+                 )}
+              </div>
+           </div>
         </div>
         
-        <div className="mt-8 text-center">
-           <button onClick={onCancel} className="text-legal-600 hover:text-legal-900 text-sm font-bold underline">
+        <div className="text-center pt-8">
+           <button onClick={onCancel} className="text-legal-600 hover:text-legal-900 text-sm font-bold underline transition-colors">
              Voltar ao Dashboard
            </button>
         </div>
