@@ -127,3 +127,10 @@ export interface StudentReport {
   };
   timestamp: number;
 }
+
+export interface RoomHistoryEntry {
+  roomId: string;
+  role: CourtRole;
+  title: string;
+  timestamp: number;
+}

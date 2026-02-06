@@ -5,6 +5,7 @@ export const MOCK_USER: User = {
   id: 'ADMIN-MASTER',
   name: 'Augusto',
   email: 'augusto.luzq@gmail.com',
+  password: 'Augusto@454528#', // Senha definida conforme solicitação
   role: UserRole.ADMIN,
   status: 'active',
   isVerified: true,

@@ -19,16 +19,21 @@ export const SimulationIA: React.FC<SimulationIAProps> = ({ onStartScenario, use
   const [perf, setPerf] = useState<UserPerformance | null>(null);
 
   useEffect(() => {
-    const p = persistenceService.getUserPerformance(user.id);
-    setPerf(p);
-    
-    const all = [...SCENARIOS, ...persistenceService.getCustomScenarios()];
-    const filtered = all
-      .map(s => ({ ...s, progress: persistenceService.getScenarioProgress(user.id, s.id) }))
-      .filter(s => s.progress > 0)
-      .sort((a, b) => b.progress - a.progress);
-    
-    setActiveScenarios(filtered);
+    const loadData = async () => {
+      const p = persistenceService.getUserPerformance(user.id);
+      setPerf(p);
+      
+      const customScenarios = await persistenceService.getCustomScenarios();
+      const all = [...SCENARIOS, ...customScenarios];
+      const filtered = all
+        .map(s => ({ ...s, progress: persistenceService.getScenarioProgress(user.id, s.id) }))
+        .filter(s => s.progress > 0)
+        .sort((a, b) => b.progress - a.progress);
+      
+      setActiveScenarios(filtered);
+    };
+
+    loadData();
   }, [user.id]);
 
   const radarData = [

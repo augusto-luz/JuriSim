@@ -52,12 +52,18 @@ export const InstructorPanel: React.FC<InstructorPanelProps> = ({ user }) => {
     }
   }, [chatMessages]);
 
-  const loadData = () => {
+  const loadData = async () => {
     const instructorClasses = persistenceService.getClasses(user.id);
     setClasses([...instructorClasses]);
-    setAllUsers(persistenceService.getAllUsers());
-    setReports(persistenceService.getAllReports());
-    setCustomScenarios(persistenceService.getCustomScenarios(user.id));
+    
+    const users = await persistenceService.getAllUsers();
+    setAllUsers(users);
+    
+    const allReports = await persistenceService.getAllReports();
+    setReports(allReports);
+    
+    const scenarios = await persistenceService.getCustomScenarios();
+    setCustomScenarios(scenarios.filter(s => s.createdBy === user.id));
   };
 
   const loadChat = () => {
@@ -107,10 +113,10 @@ export const InstructorPanel: React.FC<InstructorPanelProps> = ({ user }) => {
     }
   };
 
-  const handleDeleteScenario = (id: string, e: React.MouseEvent) => {
+  const handleDeleteScenario = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirm("Deseja excluir permanentemente este caso autoral? Alunos que já iniciaram o estudo deste caso perderão o acesso.")) {
-      persistenceService.deleteCustomScenario(id);
+      await persistenceService.deleteCustomScenario(id);
       loadData();
     }
   };

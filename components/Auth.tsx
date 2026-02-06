@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Gavel, ArrowRight, ShieldCheck, Loader2 } from 'lucide-react';
+import { Gavel, ArrowRight, ShieldCheck, Loader2, AlertCircle } from 'lucide-react';
 import { UserRole, User as UserType } from '../types.ts';
 import { persistenceService } from '../services/persistence.ts';
 
@@ -17,53 +17,58 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleAuth = (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
 
-    // Simulação de delay de processamento local
-    setTimeout(() => {
-      const emailLow = formData.email.toLowerCase();
-      const allUsers = persistenceService.getAllUsers();
+    // Delay simulado para UX
+    setTimeout(async () => {
+      try {
+        const emailLow = formData.email.toLowerCase();
+        const allUsers = await persistenceService.getAllUsers();
 
-      if (isRegistering) {
-        if (allUsers.find(u => u.email.toLowerCase() === emailLow)) {
-          setError("Este e-mail já está protocolado no sistema.");
-          setIsLoading(false);
-          return;
-        }
-
-        const newUser: UserType = {
-          id: `JURI-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
-          name: formData.name,
-          email: emailLow,
-          password: formData.password,
-          role: formData.role,
-          status: 'active',
-          isVerified: true,
-          institution: formData.institution,
-          period: formData.period,
-          oab: formData.oab,
-          course: formData.course,
-          plan: 'FREE'
-        };
-
-        persistenceService.saveUserGlobally(newUser);
-        onLogin(newUser, true);
-      } else {
-        const user = allUsers.find(u => u.email.toLowerCase() === emailLow && u.password === formData.password);
-        if (user) {
-          if (user.status === 'suspended') {
-            setError("Esta credencial foi suspensa pela Corregedoria.");
-          } else {
-            onLogin(user, true);
+        if (isRegistering) {
+          if (allUsers.find(u => u.email.toLowerCase() === emailLow)) {
+            setError("Este e-mail já possui um registro protocolado.");
+            setIsLoading(false);
+            return;
           }
+
+          const newUser: UserType = {
+            id: `JURI-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+            name: formData.name,
+            email: emailLow,
+            password: formData.password,
+            role: formData.role,
+            status: 'active',
+            isVerified: true,
+            institution: formData.institution,
+            period: formData.period,
+            oab: formData.oab,
+            course: formData.course,
+            plan: 'FREE'
+          };
+
+          await persistenceService.saveUserGlobally(newUser);
+          onLogin(newUser, true);
         } else {
-          setError("Credenciais não encontradas ou senha incorreta.");
+          const user = allUsers.find(u => u.email.toLowerCase() === emailLow && u.password === formData.password);
+          if (user) {
+            if (user.status === 'suspended') {
+              setError("Este registro foi suspenso pela Corregedoria.");
+            } else {
+              onLogin(user, true);
+            }
+          } else {
+            setError("E-mail ou senha não encontrados em nossos registros.");
+          }
         }
+      } catch (err) {
+        setError("Erro interno na autenticação local.");
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     }, 800);
   };
 
@@ -86,22 +91,22 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           </div>
           <form onSubmit={handleAuth} className="space-y-4">
             {isRegistering && (
-              <input type="text" placeholder="Nome Completo Profissional" required className="w-full p-4 bg-slate-50 border rounded-2xl outline-none shadow-inner" value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} />
+              <input type="text" placeholder="Nome Completo" required className="w-full p-4 bg-slate-50 border rounded-2xl outline-none shadow-inner" value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} />
             )}
-            <input type="email" placeholder="E-mail Institucional" required className="w-full p-4 bg-slate-50 border rounded-2xl outline-none shadow-inner" value={formData.email} onChange={e=>setFormData({...formData, email: e.target.value})} />
+            <input type="email" placeholder="E-mail" required className="w-full p-4 bg-slate-50 border rounded-2xl outline-none shadow-inner" value={formData.email} onChange={e=>setFormData({...formData, email: e.target.value})} />
             <input type="password" placeholder="Chave de Acesso" required className="w-full p-4 bg-slate-50 border rounded-2xl outline-none shadow-inner" value={formData.password} onChange={e=>setFormData({...formData, password: e.target.value})} />
             
             {isRegistering && (
               <select className="w-full p-4 bg-slate-50 border rounded-2xl outline-none shadow-inner font-bold text-slate-500" value={formData.role} onChange={e=>setFormData({...formData, role: e.target.value as UserRole})}>
-                <option value={UserRole.STUDENT}>Estudante de Direito</option>
-                <option value={UserRole.LAWYER}>Advogado(a) / OAB</option>
-                <option value={UserRole.INSTRUCTOR}>Instrutor / Professor</option>
+                <option value={UserRole.STUDENT}>Estudante</option>
+                <option value={UserRole.LAWYER}>Advogado(a)</option>
+                <option value={UserRole.INSTRUCTOR}>Instrutor(a)</option>
               </select>
             )}
 
             {error && (
-              <div className="p-4 bg-red-50 text-red-600 text-[10px] font-black uppercase tracking-widest rounded-xl border border-red-100 animate-in shake">
-                {error}
+              <div className="p-4 bg-red-50 text-red-600 text-[10px] font-bold flex items-center gap-2 rounded-xl border border-red-100 animate-in shake">
+                <AlertCircle size={14}/> {error}
               </div>
             )}
 
@@ -111,7 +116,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           </form>
           <div className="mt-8 flex items-center justify-center gap-2 text-slate-400">
              <ShieldCheck size={14}/>
-             <p className="text-[9px] font-black uppercase tracking-[0.2em]">Criptografia de Ponta-a-Ponta</p>
+             <p className="text-[9px] font-black uppercase tracking-[0.2em]">Criptografia de Ponta-a-Ponta Local</p>
           </div>
         </div>
       </div>

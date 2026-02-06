@@ -44,38 +44,39 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [lastScenario, setLastScenario] = useState<Scenario | null>(null);
 
   useEffect(() => {
-    const perf = persistenceService.getUserPerformance(user.id, user.name);
-    const all = [...SCENARIOS, ...persistenceService.getCustomScenarios(user.id)];
-    const completed = all.filter(s => persistenceService.getScenarioProgress(user.id, s.id) === 100).length;
-    
-    const withProgress = all
-      .map(s => ({ ...s, progress: persistenceService.getScenarioProgress(user.id, s.id) }))
-      .filter(s => s.progress > 0 && s.progress < 100)
-      .sort((a, b) => b.progress - a.progress);
+    const loadData = async () => {
+      const perf = persistenceService.getUserPerformance(user.id, user.name);
+      const customScenarios = await persistenceService.getCustomScenarios();
+      const all = [...SCENARIOS, ...customScenarios];
+      const completed = all.filter(s => persistenceService.getScenarioProgress(user.id, s.id) === 100).length;
+      
+      const withProgress = all
+        .map(s => ({ ...s, progress: persistenceService.getScenarioProgress(user.id, s.id) }))
+        .filter(s => s.progress > 0 && s.progress < 100)
+        .sort((a, b) => b.progress - a.progress);
 
-    setLastScenario(withProgress[0] || null);
-    
-    // Determinar Rank baseado em simulações
-    let rank = 'Estudante';
-    if (perf.totalSimulations > 30) rank = 'Advogado Sênior';
-    else if (perf.totalSimulations > 10) rank = 'Advogado Pleno';
-    else if (perf.totalSimulations > 0) rank = 'Advogado Júnior';
+      setLastScenario(withProgress[0] || null);
+      
+      let rank = 'Estudante';
+      if (perf.totalSimulations > 30) rank = 'Advogado Sênior';
+      else if (perf.totalSimulations > 10) rank = 'Advogado Pleno';
+      else if (perf.totalSimulations > 0) rank = 'Advogado Júnior';
 
-    setStats({
-      totalHours: Math.round(perf.totalExerciseTime / 60),
-      completedCases: completed,
-      // Fixed: changed 'r.avgEvidence' to 'perf.avgEvidence' to correctly use the 'perf' object
-      avgScore: Math.round((perf.avgOratory + perf.avgProcedural + perf.avgEvidence) / 3) || 0,
-      rank
-    });
+      setStats({
+        totalHours: Math.round(perf.totalExerciseTime / 60),
+        completedCases: completed,
+        avgScore: Math.round((perf.avgOratory + perf.avgProcedural + perf.avgEvidence) / 3) || 0,
+        rank
+      });
+    };
+
+    loadData();
   }, [user.id, user.name]);
 
   const isPremium = user.plan === 'PREMIUM' || user.role === UserRole.ADMIN;
 
   return (
     <div className="p-4 md:p-8 lg:p-10 space-y-6 md:space-y-8 max-w-7xl mx-auto animate-in fade-in duration-500 pb-24">
-      
-      {/* Top Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-serif font-bold text-legal-900">Olá, {user.name.split(' ')[0]}</h1>
@@ -94,7 +95,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </div>
 
-      {/* Hero Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
          <div className="lg:col-span-2 bg-legal-900 rounded-[2rem] p-6 md:p-10 text-white relative overflow-hidden shadow-2xl flex flex-col justify-center min-h-[220px]">
             <div className="absolute top-0 right-0 w-64 h-64 bg-accent-gold rounded-full mix-blend-multiply filter blur-[80px] opacity-10 translate-x-1/2 -translate-y-1/2"></div>
@@ -142,7 +142,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
          </div>
       </div>
 
-      {/* Analytics Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
          <StatsCard icon={Clock} label="Prática" value={`${stats.totalHours}h`} color="text-blue-600" bg="bg-blue-50" />
          <StatsCard icon={Award} label="Concluídos" value={stats.completedCases} color="text-green-600" bg="bg-green-50" />
@@ -150,7 +149,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
          <StatsCard icon={ShieldCheck} label="Nível Profissional" value={stats.rank} color="text-purple-600" bg="bg-purple-50" />
       </div>
 
-      {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
          <ChartCard title="Evolução Técnica" subtitle="Métricas acumuladas por semana">
             <ResponsiveContainer width="100%" height="100%">

@@ -33,7 +33,6 @@ const App: React.FC = () => {
   const [isHost, setIsHost] = useState(false);
 
   useEffect(() => {
-    // Restaura sessão do LocalStorage
     const savedUser = persistenceService.restoreSession();
     if (savedUser) {
       setUser(savedUser);

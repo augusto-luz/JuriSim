@@ -1,8 +1,10 @@
 
 import React, { useEffect, useState } from 'react';
 import { Video, Keyboard, Users, Shield, Globe, Clock, Calendar, History, ArrowRight, Gavel, Scale, User as UserIcon, AlertCircle, Loader2 } from 'lucide-react';
-import { User, CourtRole } from '../types';
-import { persistenceService, RoomHistoryEntry } from '../services/persistence';
+// Fixed: Added RoomHistoryEntry to types import
+import { User, CourtRole, RoomHistoryEntry } from '../types';
+// Fixed: Removed RoomHistoryEntry from persistence import
+import { persistenceService } from '../services/persistence';
 import { roomSignaling } from '../services/roomSignaling';
 
 interface MultiplayerLobbyProps {
