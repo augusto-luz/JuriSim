@@ -8,7 +8,10 @@
     
     <!-- Shim para evitar ReferenceError: process is not defined em produção -->
     <script>
-      window.process = { env: { API_KEY: "" } };
+      window.process = window.process || { env: {} };
+      window.process.env = window.process.env || {};
+      // Se a API_KEY for fornecida via script injection no ambiente, mantemos.
+      if (!window.process.env.API_KEY) window.process.env.API_KEY = "";
     </script>
 
     <script src="https://cdn.tailwindcss.com"></script>

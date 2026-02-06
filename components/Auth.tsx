@@ -1,8 +1,8 @@
 
-import { databaseService } from '../database.ts';
 import React, { useState } from 'react';
-import { Gavel, ArrowRight, Mail } from 'lucide-react';
+import { Gavel, ArrowRight, ShieldCheck, Loader2 } from 'lucide-react';
 import { UserRole, User as UserType } from '../types.ts';
+import { persistenceService } from '../services/persistence.ts';
 
 interface AuthProps {
   onLogin: (user: UserType, remember: boolean) => void;
@@ -10,8 +10,6 @@ interface AuthProps {
 
 export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [isRegistering, setIsRegistering] = useState(false);
-  const [isConfirmingEmail, setIsConfirmingEmail] = useState(false);
-  const [justRegisteredUser, setJustRegisteredUser] = useState<UserType | null>(null);
   const [formData, setFormData] = useState({
     name: '', email: '', password: '', role: UserRole.STUDENT,
     institution: '', period: '', oab: '', course: ''
@@ -19,45 +17,31 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const MASTER_EMAIL = 'augusto.luzq@gmail.com';
-  const MASTER_PASS = 'Augusto@454528#';
-
-  const handleAuth = async (e: React.FormEvent) => {
+  const handleAuth = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
 
-    try {
+    // Simulação de delay de processamento local
+    setTimeout(() => {
       const emailLow = formData.email.toLowerCase();
-      
-      if (emailLow === MASTER_EMAIL && formData.password === MASTER_PASS) {
-        const adminUser: UserType = {
-          id: 'ADMIN-MASTER',
-          name: 'Augusto (Admin Master)',
-          email: MASTER_EMAIL,
-          role: UserRole.ADMIN,
-          status: 'active',
-          isVerified: true,
-          plan: 'PREMIUM',
-          instructorApproved: true
-        };
-        await databaseService.upsertProfile(adminUser);
-        onLogin(adminUser, true);
-        return;
-      }
+      const allUsers = persistenceService.getAllUsers();
 
       if (isRegistering) {
-        const existing = await databaseService.getProfileByEmail(emailLow);
-        if (existing) throw new Error("E-mail já cadastrado.");
+        if (allUsers.find(u => u.email.toLowerCase() === emailLow)) {
+          setError("Este e-mail já está protocolado no sistema.");
+          setIsLoading(false);
+          return;
+        }
 
         const newUser: UserType = {
-          id: `JURI-${Math.floor(1000 + Math.random() * 9000)}`,
+          id: `JURI-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
           name: formData.name,
-          email: formData.email,
-          role: formData.role,
+          email: emailLow,
           password: formData.password,
+          role: formData.role,
           status: 'active',
-          isVerified: false,
+          isVerified: true,
           institution: formData.institution,
           period: formData.period,
           oab: formData.oab,
@@ -65,33 +49,23 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           plan: 'FREE'
         };
 
-        await databaseService.upsertProfile(newUser);
-        setJustRegisteredUser(newUser);
-        setIsConfirmingEmail(true);
+        persistenceService.saveUserGlobally(newUser);
+        onLogin(newUser, true);
       } else {
-        const user = await databaseService.getProfileByEmail(emailLow);
-        if (!user || user.password !== formData.password) {
-           throw new Error("Credenciais inválidas.");
+        const user = allUsers.find(u => u.email.toLowerCase() === emailLow && u.password === formData.password);
+        if (user) {
+          if (user.status === 'suspended') {
+            setError("Esta credencial foi suspensa pela Corregedoria.");
+          } else {
+            onLogin(user, true);
+          }
+        } else {
+          setError("Credenciais não encontradas ou senha incorreta.");
         }
-        onLogin(user, true);
       }
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
       setIsLoading(false);
-    }
+    }, 800);
   };
-
-  if (isConfirmingEmail) return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-lg rounded-[3rem] shadow-2xl overflow-hidden text-center p-10">
-        <div className="w-20 h-20 bg-accent-gold rounded-3xl flex items-center justify-center mx-auto mb-6"><Mail size={40}/></div>
-        <h3 className="text-2xl font-serif font-bold mb-4">Verifique seu E-mail</h3>
-        <p className="text-slate-600 mb-8">Protocolamos seu registro sob o ID <strong>{justRegisteredUser?.id}</strong>.</p>
-        <button onClick={() => onLogin(justRegisteredUser!, true)} className="w-full py-4 bg-legal-900 text-white rounded-xl font-bold">Acessar Tribunal</button>
-      </div>
-    </div>
-  );
 
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
@@ -102,33 +76,43 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
              <Gavel className="text-accent-gold" size={32}/>
              <h1 className="text-3xl font-serif font-bold">JuriSim</h1>
           </div>
-          <h2 className="text-4xl font-serif font-bold mb-4 relative z-10">Prática Forense Digital de Alta Performance.</h2>
-          <p className="text-legal-300 relative z-10">O ecossistema definitivo para simulação de audiências com IA.</p>
+          <h2 className="text-4xl font-serif font-bold mb-4 relative z-10 leading-tight">Prática Forense Digital de Alta Performance.</h2>
+          <p className="text-legal-300 relative z-10 text-lg">O ecossistema definitivo para simulação de audiências e treinamento com IA.</p>
         </div>
         <div className="md:w-1/2 p-10 flex flex-col justify-center">
-          <div className="flex bg-slate-100 p-1.5 rounded-2xl mb-8 border border-slate-200">
-            <button onClick={() => setIsRegistering(false)} className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${!isRegistering ? 'bg-white shadow-md text-legal-900' : 'text-slate-400'}`}>Entrar</button>
-            <button onClick={() => setIsRegistering(true)} className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${isRegistering ? 'bg-white shadow-md text-legal-900' : 'text-slate-400'}`}>Novo Registro</button>
+          <div className="flex bg-slate-100 p-1.5 rounded-2xl mb-8 border border-slate-200 shadow-inner">
+            <button onClick={() => { setIsRegistering(false); setError(null); }} className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${!isRegistering ? 'bg-white shadow-md text-legal-900' : 'text-slate-400'}`}>Entrar</button>
+            <button onClick={() => { setIsRegistering(true); setError(null); }} className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${isRegistering ? 'bg-white shadow-md text-legal-900' : 'text-slate-400'}`}>Novo Registro</button>
           </div>
           <form onSubmit={handleAuth} className="space-y-4">
             {isRegistering && (
               <input type="text" placeholder="Nome Completo Profissional" required className="w-full p-4 bg-slate-50 border rounded-2xl outline-none shadow-inner" value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} />
             )}
-            <input type="email" placeholder="E-mail" required className="w-full p-4 bg-slate-50 border rounded-2xl outline-none shadow-inner" value={formData.email} onChange={e=>setFormData({...formData, email: e.target.value})} />
+            <input type="email" placeholder="E-mail Institucional" required className="w-full p-4 bg-slate-50 border rounded-2xl outline-none shadow-inner" value={formData.email} onChange={e=>setFormData({...formData, email: e.target.value})} />
             <input type="password" placeholder="Chave de Acesso" required className="w-full p-4 bg-slate-50 border rounded-2xl outline-none shadow-inner" value={formData.password} onChange={e=>setFormData({...formData, password: e.target.value})} />
+            
             {isRegistering && (
-              <select className="w-full p-4 bg-slate-50 border rounded-2xl outline-none shadow-inner" value={formData.role} onChange={e=>setFormData({...formData, role: e.target.value as UserRole})}>
+              <select className="w-full p-4 bg-slate-50 border rounded-2xl outline-none shadow-inner font-bold text-slate-500" value={formData.role} onChange={e=>setFormData({...formData, role: e.target.value as UserRole})}>
                 <option value={UserRole.STUDENT}>Estudante de Direito</option>
-                <option value={UserRole.LAWYER}>Advogado(a)</option>
+                <option value={UserRole.LAWYER}>Advogado(a) / OAB</option>
                 <option value={UserRole.INSTRUCTOR}>Instrutor / Professor</option>
               </select>
             )}
-            {error && <div className="p-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl">{error}</div>}
+
+            {error && (
+              <div className="p-4 bg-red-50 text-red-600 text-[10px] font-black uppercase tracking-widest rounded-xl border border-red-100 animate-in shake">
+                {error}
+              </div>
+            )}
+
             <button type="submit" disabled={isLoading} className="w-full py-5 bg-legal-900 text-white rounded-[1.2rem] font-bold flex items-center justify-center gap-3 hover:bg-accent-gold hover:text-legal-900 transition-all shadow-xl active:scale-95 disabled:opacity-50">
-              {isLoading ? "Processando..." : (isRegistering ? "Protocolar Registro" : "Entrar no Tribunal")} <ArrowRight size={20}/>
+              {isLoading ? <Loader2 className="animate-spin" size={20}/> : (isRegistering ? "Protocolar Registro" : "Entrar no Tribunal")} <ArrowRight size={20}/>
             </button>
           </form>
-          <p className="mt-8 text-center text-[10px] text-slate-400 font-medium uppercase tracking-widest">Acesso seguro monitorado por criptografia.</p>
+          <div className="mt-8 flex items-center justify-center gap-2 text-slate-400">
+             <ShieldCheck size={14}/>
+             <p className="text-[9px] font-black uppercase tracking-[0.2em]">Criptografia de Ponta-a-Ponta</p>
+          </div>
         </div>
       </div>
     </div>
